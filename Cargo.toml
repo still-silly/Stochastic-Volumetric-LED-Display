@@ -14,7 +14,7 @@ env_logger = "0.11.8"
 gumdrop = "0.8.1"
 indicatif = "0.18.0"
 log = "0.4.28"
-opencv = { version = "0.96.0", default-features = false, features = [
+opencv = { version = "0.99.0", default-features = false, features = [
     "highgui",
     "videoio",
     "imgproc",
