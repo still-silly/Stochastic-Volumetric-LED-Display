@@ -3,12 +3,12 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
 };
 
 use env_logger::Builder;
 use gumdrop::Options;
-use log::{debug, error, info, LevelFilter};
+use log::{LevelFilter, debug, error, info};
 use opencv::{
     core::{Mat, MatTraitConst},
     videoio::{self, VideoCaptureTrait, VideoCaptureTraitConst},
@@ -16,6 +16,7 @@ use opencv::{
 #[cfg(feature = "scan")]
 use svled::scan;
 use svled::{
+    PosEntry,
     demo::{self, render_jpg_onto_leds},
     driver_wizard,
     led_manager::{self, set_color},
@@ -23,7 +24,7 @@ use svled::{
     scan::position_adjustment,
     speedtest,
     unity::{self, start_listeners},
-    utils, PosEntry,
+    utils,
 };
 
 #[derive(Debug, Options)]
@@ -173,11 +174,13 @@ fn main() {
 
     let mut builder = Builder::new();
 
-    builder.filter_level(if opts.verbose {
-        LevelFilter::Debug
-    } else {
-        LevelFilter::Info
-    }).format_timestamp_secs();
+    builder
+        .filter_level(if opts.verbose {
+            LevelFilter::Debug
+        } else {
+            LevelFilter::Info
+        })
+        .format_timestamp_secs();
 
     builder.init();
 
@@ -225,10 +228,7 @@ fn main() {
             ));
 
             for (index, entry) in json.iter().enumerate() {
-                output_string.push_str(&format!(
-                    "{{{}, {}, {}}}",
-                    entry.1 .0, entry.1 .1, entry.2 .1
-                ));
+                output_string.push_str(&format!("{{{}, {}, {}}}", entry.1.0, entry.1.1, entry.2.1));
 
                 if index == len - 1 {
                     output_string.push_str("}};")
@@ -358,7 +358,15 @@ fn main() {
     if let Some(Command::Speedtest(ref _speedtest_options)) = opts.command {
         info!("Performing speedtest...");
 
-        speedtest::speedtest(&manager, config_holder.num_led, config_holder.advanced.communication.speedtest_writes.unwrap_or(1000));
+        speedtest::speedtest(
+            &manager,
+            config_holder.num_led,
+            config_holder
+                .advanced
+                .communication
+                .speedtest_writes
+                .unwrap_or(1000),
+        );
     } else if let Some(Command::ReadVled(ref readvled_options)) = opts.command {
         if !readvled_options.vled_file.is_file() {
             error!("You must pass a valid vled file with --vled-file!");

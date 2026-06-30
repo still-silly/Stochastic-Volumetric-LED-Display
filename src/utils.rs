@@ -439,8 +439,8 @@ pub fn check_and_create_file(file: &PathBuf) -> Result<File, Box<dyn Error>> {
     if Path::new(&file).exists() {
         let remove_file_result = remove_file(file);
         match remove_file_result {
-            Ok(()) => debug!("Removed {}", &file.display()),
-            Err(error) => error!("Could not remove {}: {}.", &file.display(), error),
+            Ok(()) => debug!("Removed {}", file.display()),
+            Err(error) => error!("Could not remove {}: {}.", file.display(), error),
         }
         match File::create(file) {
             Ok(_) => {}

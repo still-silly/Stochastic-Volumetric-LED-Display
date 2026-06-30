@@ -186,7 +186,7 @@ pub fn set_color(manager_guard: &Arc<Mutex<ManagerData>>, n: u16, r: u8, g: u8, 
                         Some(data_file_buf) => {
                             let millis = duration.as_millis();
                             if millis >= 3 {
-                                writeln!(data_file_buf, "T:{}", &millis.to_string())
+                                writeln!(data_file_buf, "T:{}", millis)
                                     .expect("Could not write to data_file_buf!");
                             }
                             writeln!(data_file_buf, "{n}|{r}|{g}|{b}")
