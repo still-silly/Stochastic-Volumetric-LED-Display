@@ -3,7 +3,7 @@ name: Build for MacOS arm64
 on: workflow_dispatch
 
 env:
-  OPENCV_VERSION: 4.12.0
+  OPENCV_VERSION: 4.11.0
 
 jobs:
   build-x86_64:
