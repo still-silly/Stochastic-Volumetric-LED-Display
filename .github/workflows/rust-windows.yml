@@ -28,6 +28,9 @@ jobs:
           # Docker image to use
           #image: # optional, default is ghcr.io/crazy-max/ghaction-chocolatey
 
+      - name: Set up MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Cache OpenCV build
         id: cache-opencv
         uses: actions/cache@v4
