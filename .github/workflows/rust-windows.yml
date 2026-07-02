@@ -66,6 +66,7 @@ jobs:
           $env:OPENCV_LINK_PATHS="C:/opt/opencv/x64/vc17/staticlib"
           $env:OPENCV_INCLUDE_PATHS="C:/opt/opencv/include"
           $env:OPENCV_MSVC_CRT="static"
+          cargo clean
           cargo build --release
 
       - name: Upload artifact
