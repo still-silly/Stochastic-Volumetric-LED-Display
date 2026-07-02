@@ -1,20 +1,14 @@
 name: Build for MacOS x86_64
 
-# on:
-# push:
-#   branches: [main]
-# pull_request:
-#   branches: [main]
-
 on: workflow_dispatch
 
 env:
-  OPENCV_VERSION: 4.12.0
+  OPENCV_VERSION: 4.11.0
 
 jobs:
   build-x86_64:
     name: Build for x86_64 MacOS
-    runs-on: [MacOS]
+    runs-on: [macos-latest] # Or your self-hosted [MacOS] runner label
 
     steps:
       - uses: actions/checkout@v3
@@ -23,14 +17,14 @@ jobs:
       - name: Install rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-      # See https://github.com/orgs/community/discussions/26635
-      - name: brew bash, wget, cmake, openjpeg, webp
-        run: brew install bash wget cmake openjpeg webp
+      - name: brew install dependencies
+        shell: bash
+        run: brew install bash wget cmake openjpeg webp llvm
 
-      # dynamic link libclang correctly, according to https://github.com/twistedfall/opencv-rust
       - name: Dynamic Link libclang
-        shell: /usr/local/bin/bash {0}
-        run: echo "DYLD_FALLBACK_LIBRARY_PATH=$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/" >> $GITHUB_ENV
+        shell: bash
+        run: |
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$(xcode-select --print-path)/usr/lib/:$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/:/usr/local/opt/llvm/lib:/usr/local/lib" >> $GITHUB_ENV
 
       - name: Cache OpenCV build
         id: cache-opencv
@@ -43,27 +37,17 @@ jobs:
             build
           key: opencv-${{ env.OPENCV_VERSION }}-macos-x64
 
-      # Install opencv
-      #- name: Install opencv
-      #  shell: /usr/local/bin/bash {0}
-      #  run: |
-      #    echo ${DYLD_FALLBACK_LIBRARY_PATH:-is_empty}
-      #    brew install opencv
-
-      # We install to /usr/local to simplify things, as cmake doesn't have permissions by default for other dirs like /opt or /usr/local/opencv
-      # Pull opencv source, unzip, configure cmake, build, and install
-      # Disable image formats like jpeg, png, tiff, as we use rust image crate instead.  See https://docs.opencv.org/4.x/db/d05/tutorial_config_reference.html
-      # Inspired from https://github.com/twistedfall/opencv-rust/issues/364
       - name: Install OpenCV static lib
         if: steps.cache-opencv.outputs.cache-hit != 'true'
+        shell: bash
         run: |
-          DYLD_FALLBACK_LIBRARY_PATH=$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/
+          export DYLD_FALLBACK_LIBRARY_PATH="$(xcode-select --print-path)/usr/lib/:$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/:/usr/local/opt/llvm/lib:/usr/local/lib"
           wget -O opencv.zip https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip
           wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip
-          unzip opencv.zip && rm opencv.zip
-          unzip opencv_contrib.zip && rm opencv_contrib.zip
+          unzip -q opencv.zip && rm opencv.zip
+          unzip -q opencv_contrib.zip && rm opencv_contrib.zip
           mkdir -p build && cd build
-          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=NO -DCMAKE_INSTALL_PREFIX=/usr/local BUILD_CUDA_STUBS=OFF \
+          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=NO -DCMAKE_INSTALL_PREFIX=/usr/local \
             -D BUILD_DOCS=OFF \
             -D BUILD_EXAMPLES=OFF \
             -D BUILD_IPP_IW=ON \
@@ -87,7 +71,6 @@ jobs:
             -D BUILD_opencv_apps=OFF \
             -D BUILD_opencv_python2=OFF \
             -D BUILD_opencv_python3=OFF \
-            -D CMAKE_BUILD_TYPE=Release \
             -D CV_DISABLE_OPTIMIZATION=OFF \
             -D CV_ENABLE_INTRINSICS=ON \
             -D ENABLE_CONFIG_VERIFICATION=OFF \
@@ -160,30 +143,22 @@ jobs:
             -D WITH_XINE=OFF \
             -D WITH_AVIF=OFF \
             -D WITH_IMGCODEC_AVIF=OFF \
-            -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib-${{ env.OPENCV_VERSION }}/modules ../opencv-${{ env.OPENCV_VERSION }}
+            -D OPENCV_EXTRA_MODULES_PATH=../opencv_contrib-${{ env.OPENCV_VERSION }}/modules ../opencv-${{ env.OPENCV_VERSION }}
           cmake --build . --target install --config Release --parallel 16
           cmake --install . --prefix /usr/local
           cd ..
 
-      # OpenCV-rust looks for "opencv2/core/version.hpp" for the OpenCV version: https://github.com/twistedfall/opencv-rust/issues/368
-      #  which is under /<install-prefix>/include/opencv4 for macOS
-      # We also need to link a bunch of OSX frameworks.  See https://github.com/twistedfall/opencv-rust/issues/270#issuecomment-930208141
-      # Build
-      - name: Build
-        shell: /usr/local/bin/bash {0}
+      - name: Build Rust Project
+        shell: bash
         run: |
-          export DYLD_FALLBACK_LIBRARY_PATH="$(xcode-select --print-path)/usr/lib/"
+          export DYLD_FALLBACK_LIBRARY_PATH="$(xcode-select --print-path)/usr/lib/:$(xcode-select --print-path)/Toolchains/XcodeDefault.xctoolchain/usr/lib/:/usr/local/opt/llvm/lib:/usr/local/lib"
           clang_dir="$(clang --print-search-dirs | awk -F= '/^libraries: =/ { print $2 }')"
           export OPENCV_LINK_LIBS=opencv_highgui,opencv_core,opencv_videoio,opencv_imgcodecs,opencv_imgproc,libippiw,libittnotify,libippicv,zlib,jpeg,openjp2,webp,webpdemux,webpmux,OpenCL.framework,Cocoa.framework,Accelerate.framework,AVFoundation.framework,CoreGraphics.framework,CoreMedia.framework,CoreVideo.framework,QuartzCore.framework,clang_rt.osx
           export OPENCV_LINK_PATHS=/usr/local/lib,/usr/local/lib/opencv4/3rdparty,$clang_dir/lib/darwin
           export OPENCV_INCLUDE_PATHS=/usr/local/include,/usr/local/include/opencv4
-          /Users/docker/.cargo/bin/cargo build --release
-
-      - name: Set environment variables for OpenCV and LLVM
-        run: |
-          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
-          echo "PATH=$(brew --prefix llvm)/bin:$PATH" >> $GITHUB_ENV
-          echo "DYLD_FALLBACK_LIBRARY_PATH=$(xcode-select --print-path)/usr/lib/" >> $GITHUB_ENV
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export PATH="/usr/local/opt/llvm/bin:$PATH"
+          cargo build --release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

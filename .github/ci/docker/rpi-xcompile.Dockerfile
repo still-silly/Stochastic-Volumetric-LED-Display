@@ -1,40 +1,21 @@
-# Crosscompilation to Raspberry Pi on RasiOS using system OpenCV
+# Crosscompilation to Raspberry Pi on Raspbian/Raspberry Pi OS using system OpenCV
 #
-# Building this image requries `qemu-arm` to be present on the host system and the corresponding `binfmt-misc` set up (see
+# Building this image requires `qemu-arm` to be present on the host system and the corresponding `binfmt-misc` set up (see
 # e.g. https://wiki.debian.org/QemuUserEmulation, only `Installing packages` should be enough).
 #
 # After the successful build you will have an image configured for cross-compilation to Raspberry Pi. It will contain the
 # sample build script `/usr/local/bin/cargo-xbuild` that you can check for the correct environment setup and the specific
 # command line arguments to use when crosscompiling the project inside the container created from that image.
 
-
-# Download and extract rpi root filesystem
-FROM alpine:3.18
-
-RUN set -xeu && \
-    apk add xz
-
-ADD https://downloads.raspberrypi.org/raspios_lite_armhf/root.tar.xz /
-
-RUN set -xeu && \
-    mkdir "/rpi-root" && \
-    tar xpaf /root.tar.xz -C /rpi-root
-
-
-# Prepare the root of the rpi filesystem, it's going to be used later for crosscompilation
-# This step requries qemu-arm to be present on the host system and the corresponding binfmt-misc set up
-FROM scratch
-
-COPY --from=0 /rpi-root /
+# Stage 0: Build sysroot and compile OpenCV on ARMHF
+FROM balenalib/rpi-raspbian:latest AS rpi-sysroot
 
 RUN set -xeu && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y symlinks && \
     apt-get autoremove -y --purge && \
     apt-get -y autoclean
-
-RUN set -xeu && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y symlinks
 
 # error: undefined symbol: _dl_pagesize (and __pointer_chk_guard_local)
 # solution: fix the rpi-root symlink /usr/lib/arm-linux-gnueabihf/libpthread.so to be relative and point to ../../../lib/arm-linux-gnueabihf/libpthread.so.0
@@ -47,19 +28,17 @@ RUN set -xeu && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y libudev-dev libsqlite3-dev libstrophe-dev libcamera-dev pkg-config
 
 # Build OpenCV from source for most recent version (There are breaking changes betweeen the required version and the version Debian packages)
-
-# # Install dependencies for building OpenCV
-
+# Install dependencies for building OpenCV
 RUN sudo apt-get install -y \
-	build-essential ccache cmake unzip pkg-config curl \
-	libjpeg-dev libpng-dev libtiff-dev \
-	libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
-	libxvidcore-dev libx264-dev libjasper1 libjasper-dev \
-	libgtk-3-dev libcanberra-gtk* \
-	libatlas-base-dev gfortran \
-	libeigen3-dev libtbb-dev \
+    build-essential ccache cmake unzip pkg-config curl \
+    libjpeg-dev libpng-dev libtiff-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+    libxvidcore-dev libx264-dev libjasper1 libjasper-dev \
+    libgtk-3-dev libcanberra-gtk* \
+    libatlas-base-dev gfortran \
+    libeigen3-dev libtbb-dev \
     libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev \
-	python3-dev python3-numpy python-dev
+    python3-dev python3-numpy python-dev
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential cmake \
@@ -86,13 +65,6 @@ RUN set -eux; \
     mv opencv_contrib-4.11.0 OpenCV_contrib && \
     mkdir -p OpenCV/build && \
     cd OpenCV/build && \
-    # cmake -DWITH_QT=ON \
-    #       -DWITH_OPENGL=ON \
-    #       -DFORCE_VTK=ON \
-    #       -DWITH_TBB=ON \
-    #       -DWITH_GDAL=ON \
-    #       -DWITH_XINE=ON \
-    #       -DBUILD_EXAMPLES=ON .. && \
     cmake .. \
             -D BUILD_CUDA_STUBS=OFF \
             -D BUILD_DOCS=OFF \
@@ -217,17 +189,13 @@ RUN set -eux; \
             -DOPENCV_EXTRA_MODULES_PATH=../../OpenCV_contrib/modules && \
     make -j"$(nproc)" && \
     make install && \
-    # cpack -G DEB && \
-    # make uninstall && \
-    # dpkg -i OpenCV-*.deb && \
     ldconfig
 
-# RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/opencv.conf && ldconfig
 
-# Create the image that will be used for crosscompilation
+# Stage 1: Create the Ubuntu host image used for crosscompilation
 FROM ubuntu:22.04
 
-COPY --from=1 / /rpi-root
+COPY --from=rpi-sysroot / /rpi-root
 
 RUN set -xeu && \
     apt-get update && \
@@ -242,8 +210,9 @@ RUN set -xeu && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal && \
     rm -rf /root/.rustup/tmp/* # warning: could not delete temp directory: /root/.rustup/tmp/szyc3h06vricp83o_dir
 
+# Fix: Added relocation-model=static to avoid R_ARM_ABS32 linker errors against non-PIC system libraries
 RUN set -xeu && \
-    echo "[net]\ngit-fetch-with-cli = true\n[target.arm-unknown-linux-gnueabihf]\nlinker = \"clang-rpi\"" > /root/.cargo/config
+    echo "[net]\ngit-fetch-with-cli = true\n[target.arm-unknown-linux-gnueabihf]\nlinker = \"clang-rpi\"\nrustflags = [\"-C\", \"relocation-model=static\"]" > /root/.cargo/config
 
 ENV PATH="${PATH}:/root/.cargo/bin"
 
@@ -253,10 +222,6 @@ RUN set -xeu && \
 RUN echo '#!/bin/bash\n\
 RPI_ROOT="/rpi-root"\n\
 clang --target=arm-unknown-linux-gnueabihf -fuse-ld=lld --sysroot="$RPI_ROOT" --gcc-toolchain="$RPI_ROOT" "$@"' > /usr/local/bin/clang-rpi && chmod +x /usr/local/bin/clang-rpi
-
-# RUN ln -s /rpi-root/usr/local/include/opencv4 /usr/local/include/opencv4 && \
-#     ln -s /rpi-root/usr/include /usr/include && \
-#     ln -s /rpi-root/usr/local/lib/arm-linux-gnueabihf /usr/local/lib/arm-linux-gnueabihf
 
 RUN ls -R /rpi-root/usr/local/include/opencv4 || echo "opencv4 headers not found"
 
