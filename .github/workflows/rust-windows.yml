@@ -41,6 +41,7 @@ jobs:
 
       - name: Install OpenCV static lib
         if: steps.cache-opencv.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           wget -O opencv.zip https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.zip
            wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.zip
