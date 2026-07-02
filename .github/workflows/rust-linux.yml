@@ -136,6 +136,8 @@ jobs:
             -D WITH_XINE=OFF \
             -D WITH_AVIF=OFF \
             -D WITH_IMGCODEC_AVIF=OFF \
+            -DBUILD_opencv_dnn=OFF \ 
+            -DBUILD_PROTOBUF=OFF \
             -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib-${OPENCV_VERSION}/modules \
             ../opencv-${OPENCV_VERSION}
           cmake --build . --target install --config Release --parallel 16
