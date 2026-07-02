@@ -9,7 +9,7 @@ name: Build for MacOS x86_64
 on: workflow_dispatch
 
 env:
-  OPENCV_VERSION: 5.0.0
+  OPENCV_VERSION: 4.12.0
 
 jobs:
   build-x86_64:
