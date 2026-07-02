@@ -3,7 +3,7 @@ name: Build for MacOS arm64
 on: workflow_dispatch
 
 env:
-  OPENCV_VERSION: 4.11.0
+  OPENCV_VERSION: 5.0.0
 
 jobs:
   build-x86_64:
@@ -16,7 +16,7 @@ jobs:
       # Install rust
       - name: Install rust
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        
+
       # See https://github.com/orgs/community/discussions/26635
       - name: brew bash, wget, cmake, openjpeg, jpeg, webp
         run: arch -arm64 brew install bash wget cmake openjpeg jpeg webp
@@ -172,13 +172,13 @@ jobs:
           export OPENCV_LINK_PATHS=/usr/local/lib,/usr/local/lib/opencv4/3rdparty,$clang_dir/lib/darwin
           export OPENCV_INCLUDE_PATHS=/usr/local/include,/usr/local/include/opencv4
           cargo build --release
-          
+
       - name: Set environment variables for OpenCV and LLVM
         run: |
           echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix llvm)/bin:$PATH" >> $GITHUB_ENV
           echo "DYLD_FALLBACK_LIBRARY_PATH=$(xcode-select --print-path)/usr/lib/" >> $GITHUB_ENV
-          
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

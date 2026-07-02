@@ -1,13 +1,15 @@
 name: Static build for Linux x86_64
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main]
+
+on: workflow_dispatch
 
 env:
-  OPENCV_VERSION: 4.11.0
+  OPENCV_VERSION: 5.0.0
 
 jobs:
   build-x86_64:
@@ -136,7 +138,7 @@ jobs:
             -D WITH_IMGCODEC_AVIF=OFF \
             -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib-${OPENCV_VERSION}/modules \
             ../opencv-${OPENCV_VERSION}
-          cmake --build . --target install --config Release --parallel 28
+          cmake --build . --target install --config Release --parallel 16
           cmake --install . --prefix $PWD/../opencv-install
           cd ..
 
