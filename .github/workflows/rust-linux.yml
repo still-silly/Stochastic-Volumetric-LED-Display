@@ -125,7 +125,7 @@ jobs:
             -D WITH_QT=OFF \
             -D WITH_QUIRC=ON \
             -D WITH_TBB=OFF \
-            -D WITH_TIFF=ON \
+            -D WITH_TIFF=OFF \
             -D WITH_UNICAP=OFF \
             -D WITH_V4L=ON \
             -D WITH_VA=ON \
@@ -146,7 +146,9 @@ jobs:
 
       - name: Build Rust project
         run: |
-          export PKG_CONFIG_PATH=$PWD/opencv-install/lib/pkgconfig:$PKG_CONFIG_PATH
+          export OPENCV_LINK_LIBS=opencv_gapi,opencv_objdetect,opencv_dnn,opencv_highgui,opencv_videostab,opencv_calib3d,opencv_features2d,opencv_stitching,opencv_flann,opencv_videoio,opencv_rgbd,opencv_aruco,opencv_video,opencv_ml,opencv_imgcodecs,opencv_imgproc,opencv_core,ade,ittnotify,liblibwebp,liblibjpeg-turbo,liblibpng,liblibopenjp2,ippiw,ippicv,liblibprotobuf,quirc,zlib,gtk-3,gdk-3,z,pangocairo-1.0,cairo-gobject,gdk_pixbuf-2.0,atk-1.0,pango-1.0,cairo,harfbuzz,gio-2.0,gobject-2.0,glib-2.0
+          export OPENCV_LINK_PATHS=$PWD/opencv-install/lib,$PWD/opencv-install/lib/opencv4/3rdparty,/usr/lib/x86_64-linux-gnu
+          export OPENCV_INCLUDE_PATHS=$PWD/opencv-install/include,$PWD/opencv-install/include/opencv4
           cargo build --release
 
       - name: Upload artifact
