@@ -136,17 +136,17 @@ jobs:
             -D WITH_XINE=OFF \
             -D WITH_AVIF=OFF \
             -D WITH_IMGCODEC_AVIF=OFF \
-            -DBUILD_opencv_dnn=OFF \ 
+            -DBUILD_opencv_dnn=OFF \
             -DBUILD_PROTOBUF=OFF \
             -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib-${OPENCV_VERSION}/modules \
             ../opencv-${OPENCV_VERSION}
-          cmake --build . --target install --config Release --parallel 16
+          cmake --build . --target install --config Release --parallel 8
           cmake --install . --prefix $PWD/../opencv-install
           cd ..
 
       - name: Build Rust project
         run: |
-          export OPENCV_LINK_LIBS=opencv_gapi,opencv_objdetect,opencv_dnn,opencv_highgui,opencv_videostab,opencv_calib3d,opencv_features2d,opencv_stitching,opencv_flann,opencv_videoio,opencv_rgbd,opencv_aruco,opencv_video,opencv_ml,opencv_imgcodecs,opencv_imgproc,opencv_core,ade,ittnotify,liblibwebp,liblibjpeg-turbo,liblibpng,liblibopenjp2,ippiw,ippicv,liblibprotobuf,quirc,zlib,gtk-3,gdk-3,z,pangocairo-1.0,cairo-gobject,gdk_pixbuf-2.0,atk-1.0,pango-1.0,cairo,harfbuzz,gio-2.0,gobject-2.0,glib-2.0
+          export OPENCV_LINK_LIBS=opencv_gapi,opencv_objdetect,opencv_highgui,opencv_videostab,opencv_calib3d,opencv_features2d,opencv_stitching,opencv_flann,opencv_videoio,opencv_rgbd,opencv_aruco,opencv_video,opencv_ml,opencv_imgcodecs,opencv_imgproc,opencv_core,ade,ittnotify,liblibwebp,liblibjpeg-turbo,liblibpng,liblibopenjp2,ippiw,ippicv,quirc,zlib,gtk-3,gdk-3,z,pangocairo-1.0,cairo-gobject,gdk_pixbuf-2.0,atk-1.0,pango-1.0,cairo,harfbuzz,gio-2.0,gobject-2.0,glib-2.0
           export OPENCV_LINK_PATHS=$PWD/opencv-install/lib,$PWD/opencv-install/lib/opencv4/3rdparty,/usr/lib/x86_64-linux-gnu
           export OPENCV_INCLUDE_PATHS=$PWD/opencv-install/include,$PWD/opencv-install/include/opencv4
           cargo clean
