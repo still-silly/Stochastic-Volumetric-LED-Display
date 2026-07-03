@@ -61,7 +61,7 @@ jobs:
 
       - name: Build
         run: |
-          $env:OPENCV_LINK_LIBS="opencv_gapi4110,opencv_objdetect4110,opencv_highgui4110,opencv_videostab4110,opencv_calib3d4110,opencv_features2d4110,opencv_stitching4110,opencv_flann4110,opencv_videoio4110,opencv_rgbd4110,opencv_aruco4110,opencv_video4110,opencv_ml4110,opencv_imgcodecs4110,opencv_imgproc4110,opencv_core4110,ade,ittnotify,ippiw,ippicvmt,quirc,zlib,libjpeg-turbo,libwebp,libpng,libtiff,libopenjp2,comctl32,gdi32,ole32,setupapi,ws2_32,vfw32,user32,advapi32,oleaut32,uuid,comdlg32"
+          $env:OPENCV_LINK_LIBS="opencv_highgui4110,opencv_videoio4110,opencv_imgcodecs4110,opencv_imgproc4110,opencv_core4110,ippiw,ittnotify,ippicvmt,zlib,libjpeg-turbo,libwebp,libpng,libtiff,libopenjp2,comctl32,gdi32,ole32,setupapi,ws2_32,vfw32,user32,advapi32,oleaut32,uuid,comdlg32"
           # $env:OPENCV_LINK_LIBS=$(Get-ChildItem -Path C:\tools -Recurse -Filter 'opencv_world*.lib' | Select-Object -first 1 | Select-Object -ExpandProperty Name)
           $env:OPENCV_LINK_PATHS="C:/opt/opencv/x64/vc17/staticlib"
           $env:OPENCV_INCLUDE_PATHS="C:/opt/opencv/include"
