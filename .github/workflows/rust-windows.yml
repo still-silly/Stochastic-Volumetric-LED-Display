@@ -65,18 +65,18 @@ jobs:
           Write-Host "Searching for installed .lib files..."
           Get-ChildItem -Path "${{ github.workspace }}/opencv-install" -Filter "*.lib" -Recurse | Select-Object FullName
 
-      - name: Build
-        run: |
-          $env:OPENCV_LINK_LIBS="opencv_highgui4110,opencv_videoio4110,opencv_imgcodecs4110,opencv_imgproc4110,opencv_core4110,ippiw,ittnotify,ippicvmt,zlib,libjpeg-turbo,libwebp,libpng,libtiff,libopenjp2,comctl32,gdi32,ole32,setupapi,ws2_32,vfw32,user32,advapi32,oleaut32,uuid,comdlg32"
+      # - name: Build
+      #   run: |
+      #     $env:OPENCV_LINK_LIBS="opencv_highgui4110,opencv_videoio4110,opencv_imgcodecs4110,opencv_imgproc4110,opencv_core4110,ippiw,ittnotify,ippicvmt,zlib,libjpeg-turbo,libwebp,libpng,libtiff,libopenjp2,comctl32,gdi32,ole32,setupapi,ws2_32,vfw32,user32,advapi32,oleaut32,uuid,comdlg32"
 
-          # Provide multiple likely search paths separated by commas
-          $env:OPENCV_LINK_PATHS="${{ github.workspace }}/opencv-install/x64/vc17/staticlib,${{ github.workspace }}/opencv-install/x64/vc17/lib,${{ github.workspace }}/opencv-install/staticlib,${{ github.workspace }}/opencv-install/lib,${{ github.workspace }}/opencv-install/x64/vc17/staticlib/3rdparty"
+      #     # Provide multiple likely search paths separated by commas
+      #     $env:OPENCV_LINK_PATHS="${{ github.workspace }}/opencv-install/x64/vc17/staticlib,${{ github.workspace }}/opencv-install/x64/vc17/lib,${{ github.workspace }}/opencv-install/staticlib,${{ github.workspace }}/opencv-install/lib,${{ github.workspace }}/opencv-install/x64/vc17/staticlib/3rdparty"
 
-          $env:OPENCV_INCLUDE_PATHS="${{ github.workspace }}/opencv-install/include"
-          $env:OPENCV_MSVC_CRT="static"
+      #     $env:OPENCV_INCLUDE_PATHS="${{ github.workspace }}/opencv-install/include"
+      #     $env:OPENCV_MSVC_CRT="static"
 
-          cargo clean
-          cargo build --release
+      #     cargo clean
+      #     cargo build --release
 
       - name: Build
         run: |
