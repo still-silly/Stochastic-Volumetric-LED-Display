@@ -8,33 +8,14 @@
 # command line arguments to use when crosscompiling the project inside the container created from that image.
 
 
-# Download and extract rpi root filesystem
-FROM alpine:3.18
-
-RUN set -xeu && \
-    apk add xz
-
-ADD https://downloads.raspberrypi.org/raspios_lite_armhf/root.tar.xz /
-
-RUN set -xeu && \
-    mkdir "/rpi-root" && \
-    tar xpaf /root.tar.xz -C /rpi-root
-
-
-# Prepare the root of the rpi filesystem, it's going to be used later for crosscompilation
-# This step requries qemu-arm to be present on the host system and the corresponding binfmt-misc set up
-FROM scratch
-
-COPY --from=0 /rpi-root /
+# Use Balena's maintained Raspberry Pi OS base image directly
+FROM balenalib/rpi-raspbian:latest
 
 RUN set -xeu && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y && \
     apt-get autoremove -y --purge && \
     apt-get -y autoclean
-
-RUN set -xeu && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y symlinks
 
 # error: undefined symbol: _dl_pagesize (and __pointer_chk_guard_local)
 # solution: fix the rpi-root symlink /usr/lib/arm-linux-gnueabihf/libpthread.so to be relative and point to ../../../lib/arm-linux-gnueabihf/libpthread.so.0
