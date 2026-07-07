@@ -210,8 +210,9 @@ RUN set -xeu && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal && \
     rm -rf /root/.rustup/tmp/* # warning: could not delete temp directory: /root/.rustup/tmp/szyc3h06vricp83o_dir
 
+# Fix: Added relocation-model=static to avoid R_ARM_ABS32 linker errors against non-PIC system libraries
 RUN set -xeu && \
-    echo "[net]\ngit-fetch-with-cli = true\n[target.arm-unknown-linux-gnueabihf]\nlinker = \"clang-rpi\"" > /root/.cargo/config
+    echo "[net]\ngit-fetch-with-cli = true\n[target.arm-unknown-linux-gnueabihf]\nlinker = \"clang-rpi\"\nrustflags = [\"-C\", \"relocation-model=static\"]" > /root/.cargo/config
 
 ENV PATH="${PATH}:/root/.cargo/bin"
 
