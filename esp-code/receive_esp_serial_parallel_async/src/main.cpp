@@ -2,8 +2,6 @@
 #include <FastLED.h>
 // Uses both cores and a queue to speed things up significantly. The queue can be increased or decreased in size, and will block once it is full.
 
-// TODO: Queue on one CPU with LED assignments on another
-
 #define LED_COUNT_PER_STRIP 50
 #define NUM_STRIPS 1
 #define COLOR_ORDER GRB // Assuming the LED strip color order is GRB

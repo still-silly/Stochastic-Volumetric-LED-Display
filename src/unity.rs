@@ -272,14 +272,16 @@ pub fn get_events(
                     get_cam(&config, &config.camera.camera_index_1).unwrap(),
                 ));
 
-                if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
+                if let Some(video_width) = config.camera.video_width
+                    && let Some(video_height) = config.camera.video_height
+                {
                     cam.lock()
                         .unwrap()
-                        .set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())
+                        .set(CAP_PROP_FRAME_WIDTH, video_width)
                         .unwrap();
                     cam.lock()
                         .unwrap()
-                        .set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())
+                        .set(CAP_PROP_FRAME_HEIGHT, video_height)
                         .unwrap();
                 }
 
@@ -297,18 +299,20 @@ pub fn get_events(
                         get_cam(&config, &config.camera.camera_index_2.clone().unwrap()).unwrap(),
                     )));
 
-                    if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
+                    if let Some(video_width) = config.camera.video_width
+                        && let Some(video_height) = config.camera.video_height
+                    {
                         cam2.as_ref()
                             .unwrap()
                             .lock()
                             .unwrap()
-                            .set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())
+                            .set(CAP_PROP_FRAME_WIDTH, video_width)
                             .unwrap();
                         cam2.as_ref()
                             .unwrap()
                             .lock()
                             .unwrap()
-                            .set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())
+                            .set(CAP_PROP_FRAME_HEIGHT, video_height)
                             .unwrap();
                     }
 

@@ -2,6 +2,8 @@
 ## Stochastic Volumetric LEDs (3D Mapped LEDs [pretty looking lights])
 [![Linux x86_64](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-linux.yml/badge.svg)](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-linux.yml) [![RPI armv7](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-raspbian.yml/badge.svg)](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-raspbian.yml) [![Build for MacOS x86_64](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-macos.yml/badge.svg)](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-macos.yml) [![Build for MacOS arm64](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-macos-apple-silicon.yml/badge.svg)](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-macos-apple-silicon.yml) [![Build for Windows x86_64](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-windows.yml/badge.svg)](https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/actions/workflows/rust-windows.yml)  
 
+*i wrote this shit by fucking hand btw, none of this is generated code fuck my life*
+
 *Hello those from Open Sauce!*
 
 This project allows you to scan a container full of individually addressible RGB leds, and create a representation of those LEDs in 3d space in Unity/Houdini, where you can apply whatever effects in 3d that you desire.  

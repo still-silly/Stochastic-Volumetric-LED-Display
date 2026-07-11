@@ -370,7 +370,7 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
         ConnectionType::Udp(udp_socket) => {
             udp_socket.get_or_insert_with(|| {
                 let port = config.port.unwrap();
-                debug!("Binding to 0.0.0.0:{}", &port);
+                debug!("Binding to 0.0.0.0:{}", port);
                 UdpSocket::bind(format!("0.0.0.0:{}", port))
                     .unwrap_or_else(|e| panic!("Could not bind: {e}"))
             });

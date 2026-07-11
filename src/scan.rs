@@ -101,13 +101,13 @@ pub fn scan(
         get_cam(&config, &config.camera.camera_index_1.to_string()).unwrap(),
     )); // We need to constantly poll this in the background to get the most recent frame due to OpenCV bug(?)
 
-    if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
+    if let Some(video_width) = config.camera.video_width
+        && let Some(video_height) = config.camera.video_height
+    {
+        cam.lock().unwrap().set(CAP_PROP_FRAME_WIDTH, video_width)?;
         cam.lock()
             .unwrap()
-            .set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())?;
-        cam.lock()
-            .unwrap()
-            .set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())?;
+            .set(CAP_PROP_FRAME_HEIGHT, video_height)?;
     }
 
     let mut cam2: Option<Arc<Mutex<VideoCapture>>> = None;
@@ -181,17 +181,19 @@ pub fn scan(
                 get_cam(&config, &config.camera.camera_index_2.clone().unwrap()).unwrap(),
             )));
 
-            if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
+            if let Some(video_width) = config.camera.video_width
+                && let Some(video_height) = config.camera.video_height
+            {
                 cam2.as_ref()
                     .unwrap()
                     .lock()
                     .unwrap()
-                    .set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())?;
+                    .set(CAP_PROP_FRAME_WIDTH, video_width)?;
                 cam2.as_ref()
                     .unwrap()
                     .lock()
                     .unwrap()
-                    .set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())?;
+                    .set(CAP_PROP_FRAME_HEIGHT, video_height)?;
             }
 
             pos.x2_end = Some(
@@ -253,17 +255,19 @@ pub fn scan(
             get_cam(&config, &config.camera.camera_index_2.clone().unwrap()).unwrap(),
         )));
 
-        if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
+        if let Some(video_width) = config.camera.video_width
+            && let Some(video_height) = config.camera.video_height
+        {
             cam2.as_ref()
                 .unwrap()
                 .lock()
                 .unwrap()
-                .set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())?;
+                .set(CAP_PROP_FRAME_WIDTH, video_width)?;
             cam2.as_ref()
                 .unwrap()
                 .lock()
                 .unwrap()
-                .set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())?;
+                .set(CAP_PROP_FRAME_HEIGHT, video_height)?;
         }
 
         cam2_guard = Arc::clone(cam2.as_ref().unwrap());
@@ -1243,15 +1247,17 @@ pub fn crop(config: &Config, manager: &Arc<Mutex<ManagerData>>) -> Result<CropPo
         get_cam(config, &config.camera.camera_index_1).unwrap(),
     )); // callback_loop only accepts a Arc<Mutex<VideoCapture>>
 
-    if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
+    if let Some(video_width) = config.camera.video_width
+        && let Some(video_height) = config.camera.video_height
+    {
         cam_guard
             .lock()
             .unwrap()
-            .set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())?;
+            .set(CAP_PROP_FRAME_WIDTH, video_height)?;
         cam_guard
             .lock()
             .unwrap()
-            .set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())?;
+            .set(CAP_PROP_FRAME_HEIGHT, video_width)?;
     }
 
     match videoio::VideoCapture::is_opened(&cam_guard.lock().unwrap())? {
@@ -1311,15 +1317,17 @@ pub fn crop(config: &Config, manager: &Arc<Mutex<ManagerData>>) -> Result<CropPo
         *camera_active.lock().unwrap() = 1;
         let cam_guard = Arc::new(Mutex::new(get_cam(config, index).unwrap()));
 
-        if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
+        if let Some(video_width) = config.camera.video_width
+            && let Some(video_height) = config.camera.video_height
+        {
             cam_guard
                 .lock()
                 .unwrap()
-                .set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())?;
+                .set(CAP_PROP_FRAME_WIDTH, video_width)?;
             cam_guard
                 .lock()
                 .unwrap()
-                .set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())?;
+                .set(CAP_PROP_FRAME_HEIGHT, video_height)?;
         }
 
         match videoio::VideoCapture::is_opened(&cam_guard.lock().unwrap())? {
@@ -1419,21 +1427,17 @@ pub fn set_crop_mouse_callback(
                 }
             }
             #[allow(non_snake_case)]
-            EVENT_MOUSEMOVE => {
-                if actively_cropping {
-                    match *camera_active_guard.lock().unwrap() {
-                        0 => {
-                            *x1_end_guard.lock().unwrap() = x;
-                            *y1_end_guard.lock().unwrap() = y;
-                        }
-                        1 => {
-                            *x2_end_guard.lock().unwrap() = x;
-                            *y2_end_guard.lock().unwrap() = y;
-                        }
-                        _ => {}
-                    }
+            EVENT_MOUSEMOVE if actively_cropping => match *camera_active_guard.lock().unwrap() {
+                0 => {
+                    *x1_end_guard.lock().unwrap() = x;
+                    *y1_end_guard.lock().unwrap() = y;
                 }
-            }
+                1 => {
+                    *x2_end_guard.lock().unwrap() = x;
+                    *y2_end_guard.lock().unwrap() = y;
+                }
+                _ => {}
+            },
             _ => {}
         })),
     )
@@ -2433,9 +2437,11 @@ pub fn get_cam(config: &Config, index_or_address: &str) -> Result<VideoCapture, 
         }
     };
 
-    if config.camera.video_width.is_some() && config.camera.video_height.is_some() {
-        cam.set(CAP_PROP_FRAME_WIDTH, config.camera.video_width.unwrap())?;
-        cam.set(CAP_PROP_FRAME_HEIGHT, config.camera.video_height.unwrap())?;
+    if let Some(video_width) = config.camera.video_width
+        && let Some(video_height) = config.camera.video_height
+    {
+        cam.set(CAP_PROP_FRAME_WIDTH, video_width)?;
+        cam.set(CAP_PROP_FRAME_HEIGHT, video_height)?;
     }
 
     Ok(cam)
