@@ -59,11 +59,16 @@ pub struct RecordingConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct CommunicationConfig {
+    /// 1 uses UDP (in a format that supports WLED), 2 uses serial
     pub communication_mode: i8,
-    pub host: Ipv4Addr,
-    pub port: i32,
-    pub serial_port_paths: Vec<String>,
-    pub baud_rate: u32,
+    /// UDP host
+    pub host: Option<Ipv4Addr>,
+    /// UDP port
+    pub port: Option<i32>,
+    /// Serial port(s) to use in serial mode
+    pub serial_port_paths: Option<Vec<String>>,
+    /// Baud rate to use in serial mode
+    pub baud_rate: Option<u32>,
 }
 
 #[derive(Deserialize, Debug, Clone, Default)]
@@ -168,10 +173,10 @@ pub struct RuntimeConfig {
     pub num_led: u32,
     pub num_strips: u32,
     pub communication_mode: i8,
-    pub host: Ipv4Addr,
-    pub port: i32,
-    pub serial_port_paths: Vec<String>,
-    pub baud_rate: u32,
+    pub host: Option<Ipv4Addr>,
+    pub port: Option<i32>,
+    pub serial_port_paths: Option<Vec<String>>,
+    pub baud_rate: Option<u32>,
     pub serial_read_timeout: Option<u32>,
     pub record_data: bool,
     pub record_esp_data: bool,
@@ -257,19 +262,20 @@ pub struct LedState {
 #[derive(Debug, Clone)]
 pub struct LedConfig {
     // This contains values that will be cloned before moving into closure inside a thread so we don't have to deal with shared configs when using queues inside led_manager.
+    // future me, not sure what the fuck i was thinking
     pub skip_confirmation: Option<bool>,
     pub unity_controls_recording: bool,
     pub no_controller: Option<bool>,
-    pub port: i32,
+    pub port: Option<i32>,
     pub communication_mode: i8,
     pub num_led: u32,
     pub num_strips: u32,
     pub serial_read_timeout: Option<u32>,
     pub udp_read_timeout: Option<u32>,
-    pub host: Ipv4Addr,
+    pub host: Option<Ipv4Addr>,
     pub con_fail_limit: Option<u32>,
     pub print_send_back: Option<bool>,
-    pub serial_port_paths: Vec<String>,
+    pub serial_port_paths: Option<Vec<String>>,
 }
 
 #[derive(Copy, Clone)]
@@ -304,19 +310,22 @@ pub fn load_validate_conf(config_path: &Path) -> (ManagerData, UnityOptions, Con
     if let Some(no_controller) = config_holder.advanced.misc.no_controller
         && !no_controller
     {
-        if config_holder.communication.communication_mode == 2 {
-            for path in config_holder.communication.serial_port_paths.iter() {
+        let comm_conf = &config_holder.communication;
+        if let Some(paths) = &comm_conf.serial_port_paths
+            && comm_conf.communication_mode == 2
+        {
+            for path in paths.iter() {
                 if Path::new(&path).exists() {
                     info!("Using serial for communication on {path}!");
                 } else {
                     panic!("Serial port {path} does not exist!");
                 }
             }
-        } else if config_holder.communication.communication_mode == 1 {
-            info!(
-                "Using udp for communication at {} on port {}",
-                config_holder.communication.host, config_holder.communication.port
-            );
+        } else if let Some(host) = comm_conf.host
+            && let Some(port) = comm_conf.port
+            && comm_conf.communication_mode == 1
+        {
+            info!("Using udp for communication at {} on port {}", host, port);
         }
     }
 

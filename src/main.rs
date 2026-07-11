@@ -1,3 +1,4 @@
+// this was actually written by hand, which may explain alot
 use std::{
     fs::File,
     io::{Read, Write},

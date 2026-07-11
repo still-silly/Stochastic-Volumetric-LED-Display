@@ -25,12 +25,18 @@ enum SendCommandArgs<'a> {
     ChannelConfigState(ConnectionType<'a>, &'a LedConfig, &'a mut LedState),
 }
 
+// i am *pretty* sure this can only be called when using serial? it's been a while.
 fn dispatch_threads(manager: &mut ManagerData) -> Vec<Sender<Task>> {
     let config = manager.config.clone();
     let mut channels = Vec::new();
     let handles = &mut manager.state.all_thread_handles;
 
-    for path in config.serial_port_paths.clone() {
+    for path in &config
+        .serial_port_paths
+        .as_ref()
+        .expect("dispatch_threads cannot be used when using UDP i think")
+        .clone()
+    {
         let (tx, rx): (Sender<Task>, Receiver<Task>) = bounded(config.queue_size.unwrap_or(20));
         channels.push(tx);
 
@@ -50,11 +56,11 @@ fn dispatch_threads(manager: &mut ManagerData) -> Vec<Sender<Task>> {
             serial_port_paths: config.serial_port_paths.clone(),
         };
 
-        let baud_rate = config.baud_rate;
+        let baud_rate = config.baud_rate.unwrap();
         let serial_read_timeout = config.serial_read_timeout;
         let keepalive = Arc::clone(&manager.state.keepalive);
 
-        let mut serial_port = match serialport::new(&path, baud_rate)
+        let mut serial_port = match serialport::new(path, baud_rate)
             .timeout(Duration::from_millis(
                 serial_read_timeout.unwrap_or(200).into(),
             ))
@@ -302,8 +308,15 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                     } else {
                         // Establish a serial connection on each serial port
                         if manager.io.serial_port.is_empty() {
-                            for path in manager.config.serial_port_paths.clone().iter() {
-                                let baud_rate = manager.config.baud_rate;
+                            for path in manager
+                                .config
+                                .serial_port_paths
+                                .as_ref()
+                                .unwrap()
+                                .clone()
+                                .iter()
+                            {
+                                let baud_rate = manager.config.baud_rate.unwrap();
                                 let serial_read_timeout = manager.config.serial_read_timeout;
                                 manager.io.serial_port.push(
                                     match serialport::new(path, baud_rate)
@@ -356,8 +369,9 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
     match channel {
         ConnectionType::Udp(udp_socket) => {
             udp_socket.get_or_insert_with(|| {
-                debug!("Binding to 0.0.0.0:{}", config.port);
-                UdpSocket::bind(format!("0.0.0.0:{}", config.port))
+                let port = config.port.unwrap();
+                debug!("Binding to 0.0.0.0:{}", &port);
+                UdpSocket::bind(format!("0.0.0.0:{}", port))
                     .unwrap_or_else(|e| panic!("Could not bind: {e}"))
             });
 
@@ -374,7 +388,10 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                     bytes[0..2].copy_from_slice(&n.to_le_bytes());
                     bytes = [bytes[0], bytes[1], r, g, b];
                     // debug!("Sending {:?}", bytes);
-                    match udp_socket.send_to(&bytes, format!("{}:{}", config.host, config.port)) {
+                    match udp_socket.send_to(
+                        &bytes,
+                        format!("{}:{}", config.host.unwrap(), config.port.unwrap()),
+                    ) {
                         Ok(_) => {}
                         Err(e) => {
                             error!(
@@ -397,9 +414,10 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                             warn!(
                                 "UDP timeout reached! Will resend packet, but won't wait for response!"
                             );
-                            match udp_socket
-                                .send_to(&bytes, format!("{}:{}", config.host, config.port))
-                            {
+                            match udp_socket.send_to(
+                                &bytes,
+                                format!("{}:{}", config.host.unwrap(), config.port.unwrap()),
+                            ) {
                                 Ok(_) => {}
                                 Err(e) => {
                                     error!(
