@@ -33,7 +33,18 @@ jobs:
         run: cargo check --all-targets --no-default-features --locked
 
       - name: Check project
-        run: cargo check --all-targets --locked
+        id: check_project
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo check --all-targets --locked 2>&1 | tee "${RUNNER_TEMP}/cargo-check.log"
+      - name: Report project check diagnostics
+        if: steps.check_project.outcome == 'failure'
+        run: |
+          tail -n 80 "${RUNNER_TEMP}/cargo-check.log" | while IFS= read -r line; do
+            [ -n "$line" ] && printf '::error title=Cargo check::%s\n' "$line"
+          done
+          exit 1
 
       - name: Lint project
         run: cargo clippy --all-targets --locked -- -D warnings -A clippy::too_many_arguments
