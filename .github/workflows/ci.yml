@@ -24,7 +24,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes clang libclang-dev libopencv-dev libudev-dev pkg-config
+          sudo apt-get install --yes clang libclang-dev libopencv-dev libopencv-contrib-dev libudev-dev pkg-config
 
       - name: Check formatting
         run: cargo fmt --all -- --check
