@@ -378,17 +378,12 @@ pub fn scan(
 
         let mut manager = manager_guard.lock().unwrap();
         let filter_color = manager.config.filter_color.unwrap();
-        let hsv_override;
-
-        if filter_color == 0 {
-            hsv_override = manager.config.hsv_red_override.as_mut();
-        } else if filter_color == 1 {
-            hsv_override = manager.config.hsv_green_override.as_mut();
-        } else if filter_color == 2 {
-            hsv_override = manager.config.hsv_blue_override.as_mut();
-        } else {
-            panic!("{filter_color} is not a valid filter color");
-        }
+        let hsv_override = match filter_color {
+            0 => manager.config.hsv_red_override.as_mut(),
+            1 => manager.config.hsv_green_override.as_mut(),
+            2 => manager.config.hsv_blue_override.as_mut(),
+            _ => panic!("{filter_color} is not a valid filter color"),
+        };
 
         if hsv_override.is_none() {
             let override_vec = match filter_color {
