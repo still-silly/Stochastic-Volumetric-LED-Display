@@ -4,11 +4,11 @@ num_led = 2000                                # Number of LEDS TOTAL, not per st
 num_strips = 40                               # Number of strips
 
 [communication]
-communication_mode = 2                        # 1 indicates UDP, 2 indicates serial
-host = "192.168.86.53"                        # UDP host
-port = 8888                                   # UDP port (Default is 8888)
-baud_rate = 921600                            # Baud rate (Default is 921600)
-serial_port_paths = ["/path/to/serial-port"]  # Path to serial port
+communication_mode = 2                        # 1: legacy SVLED UDP, 2: serial, 3: WLED DNRGB
+host = "192.168.86.53"                        # Required for UDP/WLED modes
+port = 8888                                   # Defaults: legacy UDP 8888, WLED 21324
+baud_rate = 921600                            # Serial only (Default is 921600)
+serial_port_paths = ["/path/to/serial-port"]  # One path per host-side strip/controller partition
 
 [recording]
 record_data = true                            # If true, all commands will be recorded during the session
@@ -44,7 +44,7 @@ scale = 0.0008                                # Position scale
 serial_read_timeout = 5                       # Timeout for reading back confirmation from the controller         
 udp_read_timeout = 100                        # Timeout for using UDP
 con_fail_limit = 15                           # How many consecutive timeouts before the program will exit
-use_queue = true                              # Use an dedicated thread per LED controller with a queue
+use_queue = true                              # Serial only: use a dedicated thread per controller
 queue_size = 50                               # Size of queue
 skip_confirmation = false                     # Skip waiting for controller to confirm that it received the command
 speedtest_writes = 1000                       # Number of writes to perform during a speedtest. Defaults to 1000 if not set

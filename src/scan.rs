@@ -1253,11 +1253,11 @@ pub fn crop(config: &Config, manager: &Arc<Mutex<ManagerData>>) -> Result<CropPo
         cam_guard
             .lock()
             .unwrap()
-            .set(CAP_PROP_FRAME_WIDTH, video_height)?;
+            .set(CAP_PROP_FRAME_WIDTH, video_width)?;
         cam_guard
             .lock()
             .unwrap()
-            .set(CAP_PROP_FRAME_HEIGHT, video_width)?;
+            .set(CAP_PROP_FRAME_HEIGHT, video_height)?;
     }
 
     match videoio::VideoCapture::is_opened(&cam_guard.lock().unwrap())? {

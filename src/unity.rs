@@ -569,6 +569,7 @@ pub fn start_listeners(
                     led_state: LedState {
                         failures: 0,
                         queue_lengths: Vec::new(),
+                        wled_colors: Vec::new(),
                     },
                     led_thread_channels: Vec::new(),
                     all_thread_handles: Vec::new(),

@@ -2,6 +2,7 @@
 // #define FASTLED_OVERCLOCK 1.1
 #include <Arduino.h>
 #include <FastLED.h>
+#include "../../common/svled_serial_protocol.h"
 // Manually set pins inside of setup(), and set LED_COUNT_PER_STRIP and NUM_STRIPS. This FastLED setup section can also be used for any other scripts.
 // ESP8266: WS2811_PORTA - pins 12, 13, 14 and 15 (or pins 6,7,5 and 8 on the NodeMCU boards/pin layout).   From FastLED wiki
 // ESP32: Manually set pins
@@ -71,21 +72,18 @@ void setup()
 
 void loop()
 {
-    if (Serial.available() >= 7)
-    { // Wait for start of packet bytes to be available
-        if (Serial.read() == 0xFF)
-        {
-            if (Serial.read() == 0xBB)
-            { // SOP bytes confirmed
-                for (int n = 0; n < 5; n++)
-                {
-                    msg[n] = Serial.read();
-                }
+    svled_protocol::ColorCommand command;
+    if (svled_protocol::readColorCommand(Serial, command))
+    {
+        msg[0] = command.index & 0xFF;
+        msg[1] = command.index >> 8;
+        msg[2] = command.red;
+        msg[3] = command.green;
+        msg[4] = command.blue;
 
-                xQueueSend(queue, &msg, portMAX_DELAY);
-                Serial.write(uxQueueMessagesWaiting(queue)); // Indicate we received the message, by sending the amount of items in the queue that remain.
-            }
-        }
+        xQueueSend(queue, &msg, portMAX_DELAY);
+        // Preserve the existing acknowledgement: current hardware uses this as queue depth.
+        Serial.write(uxQueueMessagesWaiting(queue));
     }
 }
 
@@ -97,8 +95,11 @@ void task0(void *pvParameters)
         {
             int n = (msg_rcv[1] << 8) | msg_rcv[0]; // Convert n1 and n2 to a uint16_t
 
-            leds[n] = CRGB(msg_rcv[2], msg_rcv[3], msg_rcv[4]);
-            FastLED.show();
+            if (n < LED_COUNT_PER_STRIP * NUM_STRIPS)
+            {
+                leds[n] = CRGB(msg_rcv[2], msg_rcv[3], msg_rcv[4]);
+                FastLED.show();
+            }
         }
     }
 }

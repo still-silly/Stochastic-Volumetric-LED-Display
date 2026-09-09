@@ -1,6 +1,6 @@
 use std::{
     env,
-    io::{BufWriter, ErrorKind::WouldBlock, IoSlice, Write},
+    io::{BufWriter, ErrorKind, IoSlice, Write},
     net::UdpSocket,
     path::{Path, PathBuf},
     process,
@@ -13,10 +13,23 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use log::{debug, error, info, warn};
 use serialport::SerialPort;
 
-use crate::{LedConfig, LedState, Task, utils::ManagerData};
+use crate::{
+    LedConfig, LedState, Task,
+    protocol::{
+        COMMUNICATION_MODE_SERIAL, COMMUNICATION_MODE_SVLED_UDP, COMMUNICATION_MODE_WLED,
+        serial_color_packet, svled_udp_color_packet, wled_dnrgb_color_packet,
+    },
+    utils::ManagerData,
+};
+
+#[derive(Clone, Copy)]
+enum UdpProtocol {
+    Svled,
+    WledDnrgb,
+}
 
 enum ConnectionType<'a> {
-    Udp(&'a mut Option<UdpSocket>),
+    Udp(&'a mut Option<UdpSocket>, UdpProtocol),
     Serial(&'a mut dyn SerialPort),
 }
 
@@ -25,17 +38,17 @@ enum SendCommandArgs<'a> {
     ChannelConfigState(ConnectionType<'a>, &'a LedConfig, &'a mut LedState),
 }
 
-// i am *pretty* sure this can only be called when using serial? it's been a while.
+// Queued workers are intentionally serial-only. The custom UDP protocol relies
+// on a reply per packet, while WLED is best served by future frame batching.
 fn dispatch_threads(manager: &mut ManagerData) -> Vec<Sender<Task>> {
     let config = manager.config.clone();
     let mut channels = Vec::new();
     let handles = &mut manager.state.all_thread_handles;
 
-    for path in &config
+    for path in config
         .serial_port_paths
         .as_ref()
-        .expect("dispatch_threads cannot be used when using UDP i think")
-        .clone()
+        .expect("serial_port_paths must be configured before dispatching serial workers")
     {
         let (tx, rx): (Sender<Task>, Receiver<Task>) = bounded(config.queue_size.unwrap_or(20));
         channels.push(tx);
@@ -77,6 +90,7 @@ fn dispatch_threads(manager: &mut ManagerData) -> Vec<Sender<Task>> {
             let mut owned_state = LedState {
                 failures: 0,
                 queue_lengths: Vec::new(),
+                wled_colors: Vec::new(),
             };
 
             while my_keepalive.load(Ordering::Relaxed) {
@@ -103,16 +117,12 @@ fn dispatch_threads(manager: &mut ManagerData) -> Vec<Sender<Task>> {
                 }
             }
 
-            let mut queue_total_lengths: u32 = 0;
-
             if !owned_state.queue_lengths.is_empty() {
-                for n in owned_state
+                let queue_total_lengths: u32 = owned_state
                     .queue_lengths
                     .iter()
-                    .take((owned_state.queue_lengths.len() - 1) + 1)
-                {
-                    queue_total_lengths += owned_state.queue_lengths[*n as usize] as u32;
-                }
+                    .map(|length| u32::from(*length))
+                    .sum();
                 debug!(
                     "Average queue length: {}",
                     queue_total_lengths / owned_state.queue_lengths.len() as u32
@@ -237,58 +247,56 @@ pub fn set_color(manager_guard: &Arc<Mutex<ManagerData>>, n: u16, r: u8, g: u8, 
         }
     }
 
-    if let Some(use_queue) = manager.config.use_queue {
-        if !use_queue {
-            if manager.config.led_config.is_none() {
-                manager.config.led_config = Some(LedConfig {
-                    skip_confirmation: manager.config.skip_confirmation,
-                    unity_controls_recording: manager.config.unity_controls_recording,
-                    no_controller: manager.config.no_controller,
-                    port: manager.config.port,
-                    communication_mode: manager.config.communication_mode,
-                    num_led: manager.config.num_led,
-                    num_strips: manager.config.num_strips,
-                    serial_read_timeout: manager.config.serial_read_timeout,
-                    udp_read_timeout: manager.config.udp_read_timeout,
-                    host: manager.config.host,
-                    con_fail_limit: manager.config.con_fail_limit,
-                    print_send_back: manager.config.print_send_back,
-                    serial_port_paths: manager.config.serial_port_paths.clone(),
-                });
-            }
+    if manager.config.no_controller.unwrap_or(false) {
+        return;
+    }
 
-            if let Some(no_controller) = manager.config.no_controller
-                && !no_controller
-            {
-                send_color_command(SendCommandArgs::Manager(&mut manager), n, r, g, b);
-            }
-        } else if manager.state.led_thread_channels.is_empty() {
+    if u32::from(n) >= manager.config.num_led {
+        warn!(
+            "Ignoring LED index {n}; configured LED count is {}",
+            manager.config.num_led
+        );
+        return;
+    }
+
+    let use_serial_queue = manager.config.use_queue.unwrap_or(false)
+        && manager.config.communication_mode == COMMUNICATION_MODE_SERIAL;
+
+    if use_serial_queue {
+        if manager.state.led_thread_channels.is_empty() {
             manager.state.led_thread_channels = dispatch_threads(&mut manager);
-        } else {
-            let mut n = n;
-
-            let leds_per_strip = manager.config.num_led / manager.config.num_strips;
-
-            for index in 1..manager.config.num_strips + 1 {
-                if (n as u32) < index * leds_per_strip && n as u32 >= (index - 1) * leds_per_strip {
-                    // Determines which strip to send the index instruction to.
-                    n = if index > 1 {
-                        n - (leds_per_strip * (index - 1)) as u16
-                    } else {
-                        n
-                    };
-
-                    manager.state.led_thread_channels[(index - 1) as usize]
-                        .send(Task {
-                            command: (n, r, g, b),
-                            controller_queue_length: None,
-                        })
-                        .expect("Could not dispatch task to a worker thread!");
-
-                    break;
-                }
-            }
         }
+
+        let leds_per_strip = manager.config.num_led / manager.config.num_strips;
+        let controller_index = u32::from(n) / leds_per_strip;
+        let local_index = u32::from(n) - controller_index * leds_per_strip;
+
+        manager.state.led_thread_channels[controller_index as usize]
+            .send(Task {
+                command: (local_index as u16, r, g, b),
+                controller_queue_length: None,
+            })
+            .expect("Could not dispatch task to a worker thread!");
+    } else {
+        if manager.config.led_config.is_none() {
+            manager.config.led_config = Some(LedConfig {
+                skip_confirmation: manager.config.skip_confirmation,
+                unity_controls_recording: manager.config.unity_controls_recording,
+                no_controller: manager.config.no_controller,
+                port: manager.config.port,
+                communication_mode: manager.config.communication_mode,
+                num_led: manager.config.num_led,
+                num_strips: manager.config.num_strips,
+                serial_read_timeout: manager.config.serial_read_timeout,
+                udp_read_timeout: manager.config.udp_read_timeout,
+                host: manager.config.host,
+                con_fail_limit: manager.config.con_fail_limit,
+                print_send_back: manager.config.print_send_back,
+                serial_port_paths: manager.config.serial_port_paths.clone(),
+            });
+        }
+
+        send_color_command(SendCommandArgs::Manager(&mut manager), n, r, g, b);
     }
 }
 
@@ -303,57 +311,51 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
             SendCommandArgs::ChannelConfigState(channel, config, state) => (channel, config, state),
             SendCommandArgs::Manager(manager) => {
                 let channel: ConnectionType = {
-                    if manager.config.communication_mode == 1 {
-                        ConnectionType::Udp(&mut manager.io.udp_socket)
-                    } else {
-                        // Establish a serial connection on each serial port
-                        if manager.io.serial_port.is_empty() {
-                            for path in manager
-                                .config
-                                .serial_port_paths
-                                .as_ref()
-                                .unwrap()
-                                .clone()
-                                .iter()
-                            {
-                                let baud_rate = manager.config.baud_rate.unwrap();
-                                let serial_read_timeout = manager.config.serial_read_timeout;
-                                manager.io.serial_port.push(
-                                    match serialport::new(path, baud_rate)
-                                        .timeout(Duration::from_millis(
-                                            serial_read_timeout.unwrap_or(200).into(),
-                                        ))
-                                        .open()
-                                    {
-                                        Ok(port) => port,
-                                        Err(e) => panic!("Could not open {path}: {e}"),
-                                    },
-                                );
-                            }
+                    match manager.config.communication_mode {
+                        COMMUNICATION_MODE_SVLED_UDP => {
+                            ConnectionType::Udp(&mut manager.io.udp_socket, UdpProtocol::Svled)
                         }
-
-                        // Determine the correct index and serial port
-                        let leds_per_strip = manager.config.num_led / manager.config.num_strips;
-                        let mut serial_port = None;
-
-                        for index in 1..manager.config.num_strips + 1 {
-                            if (n as u32) < index * leds_per_strip
-                                && n as u32 >= (index - 1) * leds_per_strip
-                            {
-                                // Determines which strip to send the index instruction to.
-                                n = if index > 1 {
-                                    n - (leds_per_strip * (index - 1)) as u16
-                                } else {
-                                    n
-                                };
-                                serial_port =
-                                    Some(manager.io.serial_port[(index - 1) as usize].as_mut());
-
-                                break;
-                            }
+                        COMMUNICATION_MODE_WLED => {
+                            ConnectionType::Udp(&mut manager.io.udp_socket, UdpProtocol::WledDnrgb)
                         }
+                        COMMUNICATION_MODE_SERIAL => {
+                            // Establish a serial connection on each serial port
+                            if manager.io.serial_port.is_empty() {
+                                for path in manager
+                                    .config
+                                    .serial_port_paths
+                                    .as_ref()
+                                    .unwrap()
+                                    .clone()
+                                    .iter()
+                                {
+                                    let baud_rate = manager.config.baud_rate.unwrap();
+                                    let serial_read_timeout = manager.config.serial_read_timeout;
+                                    manager.io.serial_port.push(
+                                        match serialport::new(path, baud_rate)
+                                            .timeout(Duration::from_millis(
+                                                serial_read_timeout.unwrap_or(200).into(),
+                                            ))
+                                            .open()
+                                        {
+                                            Ok(port) => port,
+                                            Err(e) => panic!("Could not open {path}: {e}"),
+                                        },
+                                    );
+                                }
+                            }
 
-                        ConnectionType::Serial(serial_port.expect("Could not determine the correct index and serial port to send LED command on!"))
+                            // Preserve the existing equal-size controller mapping while making
+                            // the route identical in queued and direct serial modes.
+                            let leds_per_strip = manager.config.num_led / manager.config.num_strips;
+                            let controller_index = u32::from(n) / leds_per_strip;
+                            n = (u32::from(n) % leds_per_strip) as u16;
+
+                            ConnectionType::Serial(
+                                manager.io.serial_port[controller_index as usize].as_mut(),
+                            )
+                        }
+                        mode => unreachable!("communication mode {mode} was not validated"),
                     }
                 };
 
@@ -367,16 +369,64 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
     };
 
     match channel {
-        ConnectionType::Udp(udp_socket) => {
+        ConnectionType::Udp(udp_socket, udp_protocol) => {
+            let port = config
+                .port
+                .expect("UDP port should be validated before use");
+            let bind_port = match udp_protocol {
+                // Preserve the custom controller's existing source-port behavior.
+                UdpProtocol::Svled => port,
+                // WLED sends no acknowledgement, so an ephemeral source port is sufficient.
+                UdpProtocol::WledDnrgb => 0,
+            };
+
             udp_socket.get_or_insert_with(|| {
-                let port = config.port.unwrap();
-                debug!("Binding to 0.0.0.0:{}", port);
-                UdpSocket::bind(format!("0.0.0.0:{}", port))
+                debug!("Binding UDP sender to 0.0.0.0:{bind_port}");
+                UdpSocket::bind(format!("0.0.0.0:{bind_port}"))
                     .unwrap_or_else(|e| panic!("Could not bind: {e}"))
             });
 
             match udp_socket.as_mut() {
                 Some(udp_socket) => {
+                    let destination = format!(
+                        "{}:{}",
+                        config
+                            .host
+                            .expect("UDP host should be validated before use"),
+                        port
+                    );
+
+                    if let UdpProtocol::WledDnrgb = udp_protocol {
+                        let num_led = config.num_led as usize;
+                        if state.wled_colors.len() != num_led {
+                            state.wled_colors = vec![[0, 0, 0]; num_led];
+                        }
+
+                        let index = usize::from(n);
+                        state.wled_colors[index] = [r, g, b];
+
+                        // Current WLED releases reject a seven-byte (one-pixel)
+                        // DNRGB datagram. Include a neighboring pixel from the
+                        // local color buffer while keeping the requested pixel
+                        // and every packet field exact.
+                        let (start, first, second) = if index + 1 < num_led {
+                            (n, state.wled_colors[index], state.wled_colors[index + 1])
+                        } else if index > 0 {
+                            (
+                                n - 1,
+                                state.wled_colors[index - 1],
+                                state.wled_colors[index],
+                            )
+                        } else {
+                            (0, state.wled_colors[index], [0, 0, 0])
+                        };
+                        let bytes = wled_dnrgb_color_packet(start, first, second);
+                        if let Err(e) = udp_socket.send_to(&bytes, &destination) {
+                            error!("Could not write WLED DNRGB packet: {e}");
+                        }
+                        return;
+                    }
+
                     udp_socket
                         .set_read_timeout(Some(Duration::new(
                             0,
@@ -384,14 +434,8 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                         )))
                         .expect("set_read_timeout call failed");
 
-                    let mut bytes: [u8; 5] = [0; 5];
-                    bytes[0..2].copy_from_slice(&n.to_le_bytes());
-                    bytes = [bytes[0], bytes[1], r, g, b];
-                    // debug!("Sending {:?}", bytes);
-                    match udp_socket.send_to(
-                        &bytes,
-                        format!("{}:{}", config.host.unwrap(), config.port.unwrap()),
-                    ) {
+                    let bytes = svled_udp_color_packet(n, r, g, b);
+                    match udp_socket.send_to(&bytes, &destination) {
                         Ok(_) => {}
                         Err(e) => {
                             error!(
@@ -406,7 +450,9 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                         Ok(_size) => {
                             state.failures = 0; // Reset consecutive failure count
                         }
-                        Err(ref e) if e.kind() == WouldBlock => {
+                        Err(ref e)
+                            if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
+                        {
                             if state.failures >= config.con_fail_limit.unwrap_or(5) {
                                 error!("Too many consecutive communication failures, exiting.");
                                 process::exit(1);
@@ -414,10 +460,7 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                             warn!(
                                 "UDP timeout reached! Will resend packet, but won't wait for response!"
                             );
-                            match udp_socket.send_to(
-                                &bytes,
-                                format!("{}:{}", config.host.unwrap(), config.port.unwrap()),
-                            ) {
+                            match udp_socket.send_to(&bytes, &destination) {
                                 Ok(_) => {}
                                 Err(e) => {
                                     error!(
@@ -432,7 +475,7 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                         }
                     }
 
-                    if buf == [42, 41, 44] {
+                    if buf == *b"BAD" {
                         // "BAD" - indicates the remote device reported a malformed packet
                         warn!("ESP reported a malformed packet!"); // TODO: Should we resend packet and not wait?
                         state.failures += 1
@@ -446,9 +489,7 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
 
         ConnectionType::Serial(serial_port) => {
             // This will not figure out the correct strip/index to send to, and will send the index unmodified.
-            let mut msg: [u8; 7] = [0; 7];
-            msg[2..4].copy_from_slice(&n.to_le_bytes());
-            msg = [0xFF, 0xBB, msg[2], msg[3], r, g, b]; // 0xFF & 0xBB indicate a start of packet.
+            let msg = serial_color_packet(n, r, g, b);
             match serial_port.write_vectored(&[IoSlice::new(&msg)]) {
                 Ok(_) => {}
                 Err(e) => {

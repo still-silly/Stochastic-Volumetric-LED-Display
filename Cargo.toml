@@ -3,8 +3,8 @@ name = "svled"
 version = "0.1.3"
 edition = "2024"
 description = "A program to map LEDs in 3D space"
-documentation = "https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display/wiki"
-repository = "https://github.com/timothyhay256/Stochastic-Volumetric-LED-Display"
+documentation = "https://github.com/still-silly/Stochastic-Volumetric-LED-Display/wiki"
+repository = "https://github.com/still-silly/Stochastic-Volumetric-LED-Display"
 license = "GPL-3.0-or-later"
 categories = ["computer-vision"]
 

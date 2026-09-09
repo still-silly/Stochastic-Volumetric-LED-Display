@@ -45,7 +45,7 @@ End MPU6050 code
 */
 TaskHandle_t ledCommands; // Task for multicore
 
-const char* ssid = "STN";
+const char* ssid = "SSID";
 const char* password = "PASSWORD";
 
 #define BAUD_RATE 921600

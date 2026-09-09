@@ -1,4 +1,5 @@
-// Simple script to use ESP32 over UDP
+// Legacy SVLED UDP receiver. This uses SVLED's custom five-byte packet and is
+// not the WLED protocol. Prefer serial for hardware-tested deployments.
 
 #include <FastLED.h>
 #include <WiFi.h>
@@ -8,14 +9,20 @@
 #define LED_PIN 2
 #define LED_COUNT 50
 #define COLOR_ORDER GRB
-const char *ssid = "STN";            // Network SSID
-const char *password = "88bb6b7054"; // Network password
+#ifndef WIFI_SSID
+#define WIFI_SSID "CHANGE_ME"
+#endif
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD "CHANGE_ME"
+#endif
+const char *ssid = WIFI_SSID;
+const char *password = WIFI_PASSWORD;
 // Change variables above!
 
 int port = 8888;
 
 WiFiUDP UDP;
-char packet[12];
+uint8_t packet[5];
 char reply[] = "A";
 char reply_bad[] = "BAD";
 
@@ -64,7 +71,7 @@ void loop()
   {
     int len = UDP.read(packet, 5);
 
-    if (len == 4)
+    if (packetSize == 5 && len == 5)
     {
       byte n1 = packet[0];
       byte n2 = packet[1];
@@ -74,20 +81,30 @@ void loop()
 
       int n = (n2 << 8) | n1; // Convert n1 and n2 to a uint16_t
 
-      leds[n] = CRGB(r, g, b);
+      bool validIndex = n < LED_COUNT;
+      if (validIndex)
+      {
+        leds[n] = CRGB(r, g, b);
 
-      if (cycle >= set_every)
-      {
-        FastLED.show();
-        cycle = 0;
-      }
-      else
-      {
-        cycle += 1;
+        if (cycle >= set_every)
+        {
+          FastLED.show();
+          cycle = 0;
+        }
+        else
+        {
+          cycle += 1;
+        }
       }
 
       UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
-      UDP.printf(reply);
+      UDP.write(reinterpret_cast<const uint8_t *>(validIndex ? reply : reply_bad), validIndex ? 1 : 3);
+      UDP.endPacket();
+    }
+    else
+    {
+      UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
+      UDP.write(reinterpret_cast<const uint8_t *>(reply_bad), 3);
       UDP.endPacket();
     }
   }

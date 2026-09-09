@@ -4,19 +4,20 @@ By default, the  program will attempt to read from `svled.toml` within the local
 
 ### Options
 
-These options are **required** to be set.
+The top-level sections are required. Communication fields are mode-specific: serial does not
+require `host`/`port`, and UDP modes do not require `serial_port_paths`/`baud_rate`.
 
 ```
 num_led = 2000                                # Number of LEDS TOTAL, not per strip.
 num_strips = 40                               # Number of strips
 
 [communication]
-communication_mode = 2                        # 1 indicates UDP, 2 indicates serial
-host = "192.168.86.53"                        # UDP host
-port = 8888                                   # UDP port (Default is 8888)
-baud_rate = 921600                            # Baud rate (Default is 921600)
+communication_mode = 2                        # 1: legacy SVLED UDP, 2: serial, 3: WLED DNRGB
+host = "192.168.86.53"                        # Required for UDP/WLED modes
+port = 8888                                   # Defaults: legacy UDP 8888, WLED 21324
+baud_rate = 921600                            # Serial only (Default is 921600)
 
-serial_port_paths = ["/path/to/serial-port"]  # Path to serial port
+serial_port_paths = ["/path/to/serial-port"]  # One path per host-side strip/controller partition
 
 [recording]
 record_data = true                            # If true, all commands will be recorded during the session
@@ -53,7 +54,7 @@ These should be enough to get started. However, if you need more advanced option
 serial_read_timeout = 5                       # Timeout for reading back confirmation from the controller         
 udp_read_timeout = 100                        # Timeout for using UDP
 con_fail_limit = 15                           # How many consecutive timeouts before the program will exit
-use_queue = true                              # Use an dedicated thread per LED controller with a queue
+use_queue = true                              # Serial only: use a dedicated thread per controller
 queue_size = 50                               # Size of queue
 skip_confirmation = false                     # Skip waiting for controller to confirm that it received the command
 
@@ -85,11 +86,23 @@ no_controller = false                         # Don't check if the controller is
 
 ### Notes
 
-When using `use_queue`, you can get a massive performance boost at when using multiple controllers (as one thread is spawned per controller) at the cost of potential accuracy if the queue length is set too high. Commands will be sent to their appropriate queue, while the thread assigned to that queue will drain it and send it out to the controller.
+When using `use_queue` with serial controllers, you can get a massive performance boost with multiple controllers (one thread is spawned per controller) at the cost of potential latency if the queue length is set too high. Commands are sent to the appropriate controller queue, while the thread assigned to that queue drains it. UDP and WLED modes ignore this setting.
+
+In serial mode, `num_strips` is the number of host-side controller partitions: provide the same
+number of serial paths and divide `num_led` evenly between them. A single ESP that drives multiple
+FastLED outputs still counts as one host-side partition if it receives one contiguous index range.
 
 `queue_length` shouldn't be too high, as the higher it is, the more inaccuracy in the display you will get.
 
 `skip_confirmation` should really be avoided, since the program will likely end up sending the next command while the device is processing the current one.
+
+### WLED
+
+Set `communication_mode = 3`, set `host` to the WLED device address, and either omit `port`
+or set it to the realtime UDP port configured in WLED (normally `21324`). Enable **Receive UDP
+realtime** in WLED's Sync settings. SVLED sends DNRGB packets in this mode and does not wait for
+an acknowledgement. The existing custom UDP protocol remains available as mode `1` and its
+five-byte packet plus acknowledgement behavior has not changed.
 
 `capture_frames` can be decreased to improve scanning performance, but if it is too low, and your camera has a high enough frame rate, you may get completely scrambled and useless data.
 

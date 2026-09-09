@@ -11,7 +11,7 @@ use std::{
 use log::{info, warn};
 use time::Instant;
 
-use crate::{led_manager, ManagerData};
+use crate::{ManagerData, led_manager};
 
 pub fn read_vled(manager: &Arc<Mutex<ManagerData>>, file: PathBuf) -> Result<(), Box<dyn Error>> {
     if file.extension().and_then(OsStr::to_str) != Some("vled") {

@@ -1,4 +1,5 @@
-// Remotely control Neopixel over WiFi - UDP and quicker buffers TODO: Send 4 bytes instead of a long string
+// Legacy SVLED UDP receiver for ESP8266. This uses SVLED's custom five-byte
+// packet and is not the WLED protocol. Prefer serial where possible.
 #include <NeoPixelBus.h>
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
@@ -10,11 +11,17 @@ RgbColor green(0, 255, 0);
 RgbColor clear(0);
 
 int port = 8888;
-const char *ssid = "Zou Family";
-const char *password = "sunonyee1";
+#ifndef WIFI_SSID
+#define WIFI_SSID "CHANGE_ME"
+#endif
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD "CHANGE_ME"
+#endif
+const char *ssid = WIFI_SSID;
+const char *password = WIFI_PASSWORD;
 
 WiFiUDP UDP;
-char packet[12];
+uint8_t packet[5];
 char reply[] = "A";
 char reply_bad[] = "BAD";
 
@@ -89,7 +96,7 @@ void loop()
   {
     int len = UDP.read(packet, 5);
 
-    if (len == 4)
+    if (packetSize == 5 && len == 5)
     {
       byte n1 = packet[0];
       byte n2 = packet[1];
@@ -99,12 +106,22 @@ void loop()
 
       int n = (n2 << 8) | n1; // Convert n1 and n2 to a uint16_t
 
-      RgbColor color(r, g, b);
-      strip.SetPixelColor(n, color);
-      strip.Show();
+      bool validIndex = n < LED_COUNT;
+      if (validIndex)
+      {
+        RgbColor color(r, g, b);
+        strip.SetPixelColor(n, color);
+        strip.Show();
+      }
 
       UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
-      UDP.printf(reply);
+      UDP.write(reinterpret_cast<const uint8_t *>(validIndex ? reply : reply_bad), validIndex ? 1 : 3);
+      UDP.endPacket();
+    }
+    else
+    {
+      UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
+      UDP.write(reinterpret_cast<const uint8_t *>(reply_bad), 3);
       UDP.endPacket();
     }
   }

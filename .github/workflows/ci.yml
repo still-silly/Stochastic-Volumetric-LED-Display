@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main, wled-support]
+  pull_request:
+    branches: [main, wled-support]
+  workflow_dispatch:
+
+concurrency:
+  group: rust-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang libclang-dev libopencv-dev libudev-dev pkg-config
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check project
+        run: cargo check --all-targets --locked
+
+      - name: Lint project
+        run: cargo clippy --all-targets --locked -- -D warnings -A clippy::too_many_arguments
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+  firmware:
+    runs-on: ubuntu-24.04
+    env:
+      PLATFORMIO_CORE_DIR: ${{ runner.temp }}/platformio
+      PLATFORMIO_SETTING_ENABLE_PROMPTS: 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - esp-code/receive_esp_serial
+          - esp-code/receive_esp_serial_parallel
+          - esp-code/receive_esp_serial_parallel_async
+          - esp-code/esp_main
+          - esp-code/receive_esp32_udp
+          - esp-code/receive_esp8266_udp_neopixel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: python -m pip install --upgrade platformio
+
+      - name: Build firmware
+        run: pio run --project-dir "${{ matrix.project }}"

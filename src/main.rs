@@ -1,4 +1,3 @@
-// this was actually written by hand, which may explain alot
 use std::{
     fs::File,
     io::{Read, Write},
@@ -167,6 +166,22 @@ struct AdjustPerspectiveOptions {
     output_file: Option<String>,
 }
 
+fn wait_for_managed_threads(manager: &Arc<Mutex<utils::ManagerData>>) {
+    let handles = {
+        let mut manager = manager.lock().unwrap();
+        // Closing the senders lets serial workers drain queued commands and then
+        // observe channel disconnection before we join them.
+        manager.state.led_thread_channels.clear();
+        std::mem::take(&mut manager.state.all_thread_handles)
+    };
+
+    for handle in handles {
+        if let Err(e) = handle.join() {
+            error!("Thread panicked: {e:?}");
+        }
+    }
+}
+
 fn main() {
     let opts = MyOptions::parse_args_default_or_exit();
 
@@ -229,7 +244,7 @@ fn main() {
             ));
 
             for (index, entry) in json.iter().enumerate() {
-                output_string.push_str(&format!("{{{}, {}, {}}}", entry.1.0, entry.1.1, entry.2.1));
+                output_string.push_str(&format!("{{{}, {}, {}}}", entry.1.0, entry.1.1, entry.2.0));
 
                 if index == len - 1 {
                     output_string.push_str("}};")
@@ -238,7 +253,19 @@ fn main() {
                 }
             }
 
-            info!("{output_string}");
+            if let Some(output_path) = &convert_ledpos_options.output {
+                let mut output_file = File::create(output_path).unwrap_or_else(|e| {
+                    panic!("Could not create C++ position file {output_path}: {e}")
+                });
+                output_file
+                    .write_all(output_string.as_bytes())
+                    .unwrap_or_else(|e| {
+                        panic!("Could not write C++ position file {output_path}: {e}")
+                    });
+                info!("Wrote C++ position data to {output_path}");
+            } else {
+                info!("{output_string}");
+            }
         } else {
             error!("{} not found", path.display());
         }
@@ -412,16 +439,7 @@ fn main() {
             manager.state.keepalive.store(false, Ordering::Relaxed);
             manager.state.keepalive_get_events = false;
 
-            debug!("joining handles");
-            for handle in std::mem::take(&mut manager.state.all_thread_handles) {
-                if let Err(e) = handle.join() {
-                    error!("Thread panicked: {e:?}");
-                }
-            }
-
             drop(manager);
-
-            debug!("finished joining handles");
         })
         .expect("Error setting Ctrl-C handler");
 
@@ -455,6 +473,8 @@ fn main() {
             .state
             .all_thread_handles
             .append(&mut start_listeners(&config_holder, &manager));
+
+        wait_for_managed_threads(&manager);
     } else if let Some(Command::SendPos(ref _sendpos_options)) = opts.command {
         info!("Sending positions to Unity");
 
@@ -504,15 +524,7 @@ fn main() {
                 .append(&mut listener_thread_handles);
         }
 
-        let all_handles = {
-            let mut guard = manager.lock().unwrap();
-            std::mem::take(&mut guard.state.all_thread_handles)
-        };
-
-        for handle in all_handles {
-            info!("joining thread");
-            handle.join().unwrap();
-        }
+        wait_for_managed_threads(&manager);
     } else if let Some(Command::DriverWizard(ref _driver_wizard_options)) = opts.command {
         info!("Starting driver configuration wizard!");
         driver_wizard::wizard();
@@ -605,5 +617,6 @@ fn main() {
 
     // led_manager::set_color(&mut manager, 1, 255, 255, 255);
 
+    wait_for_managed_threads(&manager);
     utils::flush_data(manager);
 }

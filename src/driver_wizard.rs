@@ -16,9 +16,7 @@ pub fn wizard() {
 
     let _template = match ans {
         Ok(choice) => choice,
-        Err(_) => {
-            panic!("FUCK");
-        }
+        Err(e) => panic!("Could not select a controller communication mode: {e}"),
     };
 
     let led_count = Text::new("How many LEDs are you using?").prompt();

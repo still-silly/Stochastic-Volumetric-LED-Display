@@ -9,6 +9,7 @@ After that, go to the user defined variables and set them
 
 #include <Arduino.h>
 #include <FastLED.h>
+#include "../../common/svled_serial_protocol.h"
 #ifdef USE_NETWORK
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -112,8 +113,6 @@ bool sendBack = false;          // Should I send back the values I set? For debu
 String brightnessValue;         // How bright the strip should be
 int speedValue = 50;            // Relative range of how fast animations should play (0 much slower, 50 regular speed, 100 fastest possible)
 float maxSpeedMultiplier = 2.0; // Multiply the delay by this value when speedValue is at 0 (e.g, at 2, the slowest speed is 2x as slow) [not working yet]
-
-int n1, n2, n, r, g, b, firstSOPByte, secondSOPByte; // Used when accepting commands
 
 int selectedMode = 0; // Default to animation zero
 int numOfModes = 3;   // How many modes are there? (Total modes)
@@ -579,37 +578,25 @@ void sendGyroData()
 
 void receiveCommands()
 { // Listen for and get commands over Serial
-
-    if (Serial.available() >= 6)
-    { // Wait for start of packet bytes to be available
-        if (Serial.read() == 0xFF)
+    svled_protocol::ColorCommand command;
+    if (svled_protocol::readColorCommand(Serial, command))
+    {
+        if (command.index < LED_COUNT)
         {
-            if (Serial.read() == 0xBB)
-            { // SOP bytes confirmed
-                n1 = Serial.read();
-                n2 = Serial.read(); // n1+n2 = uint16_t instead of uint8_t
-                r = Serial.read();
-                g = Serial.read();
-                b = Serial.read();
+            leds[command.index] = CRGB(command.red, command.green, command.blue);
+            FastLED.show();
+        }
 
-                n = (n2 << 8) | n1; // Convert n1 and n2 to a uint16_t
-
-                // Set the color of the specified LED
-                leds[n] = CRGB(r, g, b);
-                FastLED.show();
-
-                if (sendBack)
-                {
-                    String message = String(n) + "|" + String(r) + "|" + String(g) + "|" + String(b);
-
-                    // Print the message via Serial
-                    Serial.println(message);
-                }
-                else
-                {
-                    Serial.write(0x01); // Send a single byte (acknowledgment)
-                }
-            }
+        if (sendBack)
+        {
+            String message = String(command.index) + "|" + String(command.red) + "|" +
+                             String(command.green) + "|" + String(command.blue);
+            Serial.println(message);
+        }
+        else
+        {
+            // Preserve the existing one-byte acknowledgement and its timing.
+            Serial.write(0x01);
         }
     }
 }

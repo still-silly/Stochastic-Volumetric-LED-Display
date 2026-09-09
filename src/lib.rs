@@ -4,6 +4,7 @@ pub mod scan;
 pub mod demo;
 pub mod driver_wizard;
 pub mod led_manager;
+pub mod protocol;
 pub mod read_vled;
 pub mod speedtest;
 pub mod unity;

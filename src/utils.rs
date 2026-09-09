@@ -15,6 +15,11 @@ use opencv::prelude::*;
 use serde::Deserialize;
 use serialport::SerialPort;
 
+use crate::protocol::{
+    COMMUNICATION_MODE_SERIAL, COMMUNICATION_MODE_SVLED_UDP, COMMUNICATION_MODE_WLED,
+    DEFAULT_SERIAL_BAUD_RATE, DEFAULT_SVLED_UDP_PORT, DEFAULT_WLED_UDP_PORT,
+};
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub num_led: u32,
@@ -24,6 +29,7 @@ pub struct Config {
     pub camera: CameraConfig,
     pub scan: ScanConfig,
     pub unity_options: UnityOptions,
+    #[serde(default)]
     pub advanced: AdvancedConfig,
 }
 
@@ -59,7 +65,7 @@ pub struct RecordingConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct CommunicationConfig {
-    /// 1 uses UDP (in a format that supports WLED), 2 uses serial
+    /// 1 uses the legacy SVLED UDP protocol, 2 uses serial, 3 uses WLED DNRGB.
     pub communication_mode: i8,
     /// UDP host
     pub host: Option<Ipv4Addr>,
@@ -257,12 +263,15 @@ pub struct CropPos {
 pub struct LedState {
     pub failures: u32,
     pub queue_lengths: Vec<u8>,
+    /// Last colors sent to WLED. DNRGB packets contain two adjacent pixels for
+    /// compatibility with WLED's packet-length validation.
+    pub wled_colors: Vec<[u8; 3]>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LedConfig {
-    // This contains values that will be cloned before moving into closure inside a thread so we don't have to deal with shared configs when using queues inside led_manager.
-    // future me, not sure what the fuck i was thinking
+    // A compact cloneable view used by serial worker threads, avoiding shared
+    // configuration locks in the hardware write path.
     pub skip_confirmation: Option<bool>,
     pub unity_controls_recording: bool,
     pub no_controller: Option<bool>,
@@ -302,30 +311,96 @@ pub fn load_validate_conf(config_path: &Path) -> (ManagerData, UnityOptions, Con
         .expect(
             "The config file contains non UTF-8 characters, what in the world did you put in it??",
         );
-    let config_holder: Config = toml::from_str(&config_file_contents)
+    let mut config_holder: Config = toml::from_str(&config_file_contents)
         .expect("The config file was not formatted properly and could not be read.");
 
     // Validate config and inform user of settings
 
-    if let Some(no_controller) = config_holder.advanced.misc.no_controller
-        && !no_controller
-    {
-        let comm_conf = &config_holder.communication;
-        if let Some(paths) = &comm_conf.serial_port_paths
-            && comm_conf.communication_mode == 2
-        {
-            for path in paths.iter() {
-                if Path::new(&path).exists() {
-                    info!("Using serial for communication on {path}!");
-                } else {
-                    panic!("Serial port {path} does not exist!");
+    if config_holder.num_led == 0 {
+        panic!("num_led must be greater than zero");
+    }
+    if config_holder.num_led > u16::MAX as u32 + 1 {
+        panic!("num_led cannot exceed 65536 because the controller protocol uses 16-bit indexes");
+    }
+    if config_holder.num_strips == 0 {
+        panic!("num_strips must be greater than zero");
+    }
+
+    let no_controller = config_holder.advanced.misc.no_controller.unwrap_or(false);
+    let use_queue = config_holder
+        .advanced
+        .communication
+        .use_queue
+        .unwrap_or(false);
+    config_holder.advanced.misc.no_controller = Some(no_controller);
+    config_holder.advanced.communication.use_queue = Some(use_queue);
+    config_holder.advanced.communication.skip_confirmation = Some(
+        config_holder
+            .advanced
+            .communication
+            .skip_confirmation
+            .unwrap_or(false),
+    );
+
+    if !no_controller {
+        let comm_conf = &mut config_holder.communication;
+        match comm_conf.communication_mode {
+            COMMUNICATION_MODE_SERIAL => {
+                let paths = comm_conf
+                    .serial_port_paths
+                    .as_ref()
+                    .filter(|paths| !paths.is_empty())
+                    .expect("serial mode requires at least one serial_port_paths entry");
+
+                if paths.len() != config_holder.num_strips as usize {
+                    panic!(
+                        "serial mode requires one serial_port_paths entry per strip/controller ({} configured strips, {} paths)",
+                        config_holder.num_strips,
+                        paths.len()
+                    );
+                }
+                if !config_holder
+                    .num_led
+                    .is_multiple_of(config_holder.num_strips)
+                {
+                    panic!(
+                        "serial mode requires num_led to be evenly divisible by num_strips so indexes map deterministically"
+                    );
+                }
+
+                comm_conf.baud_rate.get_or_insert(DEFAULT_SERIAL_BAUD_RATE);
+                for path in paths {
+                    if Path::new(path).exists() {
+                        info!("Using serial for communication on {path}!");
+                    } else {
+                        panic!("Serial port {path} does not exist!");
+                    }
                 }
             }
-        } else if let Some(host) = comm_conf.host
-            && let Some(port) = comm_conf.port
-            && comm_conf.communication_mode == 1
+            COMMUNICATION_MODE_SVLED_UDP => {
+                let host = comm_conf.host.expect("custom UDP mode requires host");
+                let port = *comm_conf.port.get_or_insert(DEFAULT_SVLED_UDP_PORT);
+                if !(1..=65_535).contains(&port) {
+                    panic!("custom UDP port must be between 1 and 65535");
+                }
+                info!("Using the legacy SVLED UDP protocol at {host}:{port}");
+            }
+            COMMUNICATION_MODE_WLED => {
+                let host = comm_conf.host.expect("WLED mode requires host");
+                let port = *comm_conf.port.get_or_insert(DEFAULT_WLED_UDP_PORT);
+                if !(1..=65_535).contains(&port) {
+                    panic!("WLED UDP port must be between 1 and 65535");
+                }
+                info!("Using WLED DNRGB realtime control at {host}:{port}");
+            }
+            mode => panic!(
+                "unsupported communication_mode {mode}; use 1 for custom UDP, 2 for serial, or 3 for WLED"
+            ),
+        }
+
+        if use_queue && config_holder.communication.communication_mode != COMMUNICATION_MODE_SERIAL
         {
-            info!("Using udp for communication at {} on port {}", host, port);
+            warn!("use_queue only applies to serial mode and will be ignored");
         }
     }
 
@@ -423,6 +498,7 @@ pub fn load_validate_conf(config_path: &Path) -> (ManagerData, UnityOptions, Con
                     LedState {
                         failures: 0,
                         queue_lengths: Vec::new(),
+                        wled_colors: Vec::new(),
                     }
                 },
                 led_thread_channels: Vec::new(),
