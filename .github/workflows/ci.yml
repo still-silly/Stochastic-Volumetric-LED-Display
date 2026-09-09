@@ -47,7 +47,18 @@ jobs:
           exit 1
 
       - name: Lint project
-        run: cargo clippy --all-targets --locked -- -D warnings -A clippy::too_many_arguments
+        id: lint_project
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy --all-targets --locked -- -D warnings -A clippy::too_many_arguments 2>&1 | tee "${RUNNER_TEMP}/cargo-clippy.log"
+      - name: Report lint diagnostics
+        if: steps.lint_project.outcome == 'failure'
+        run: |
+          tail -n 100 "${RUNNER_TEMP}/cargo-clippy.log" | while IFS= read -r line; do
+            [ -n "$line" ] && printf '::error title=Cargo clippy::%s\n' "$line"
+          done
+          exit 1
 
       - name: Run tests
         run: cargo test --all-targets --locked
