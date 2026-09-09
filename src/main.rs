@@ -9,20 +9,21 @@ use std::{
 use env_logger::Builder;
 use gumdrop::Options;
 use log::{LevelFilter, debug, error, info};
+#[cfg(feature = "scan")]
 use opencv::{
     core::{Mat, MatTraitConst},
     videoio::{self, VideoCaptureTrait, VideoCaptureTraitConst},
 };
 #[cfg(feature = "scan")]
 use svled::scan;
+#[cfg(feature = "scan")]
+use svled::scan::position_adjustment;
 use svled::{
     PosEntry,
     demo::{self, render_jpg_onto_leds},
     driver_wizard,
     led_manager::{self, set_color},
-    read_vled,
-    scan::position_adjustment,
-    speedtest,
+    read_vled, speedtest,
     unity::{self, start_listeners},
     utils,
 };
@@ -83,9 +84,11 @@ enum Command {
     #[options(help = "convert an led position json into a C++ compatible constant")]
     ConvertLedpos(ConvertLedposOptions),
 
+    #[cfg(feature = "scan")]
     #[options(help = "list functioning camera indexes")]
     ListCams(ListCamsOptions),
 
+    #[cfg(feature = "scan")]
     #[options(help = "perform perspective adjustment")]
     AdjustPerspective(AdjustPerspectiveOptions),
 }
@@ -148,6 +151,7 @@ struct ConvertLedposOptions {
     output: Option<String>,
 }
 
+#[cfg(feature = "scan")]
 #[derive(Debug, Options)]
 struct ListCamsOptions {
     #[options(help = "which index to start search at")]
@@ -157,6 +161,7 @@ struct ListCamsOptions {
     upper_index: Option<i32>,
 }
 
+#[cfg(feature = "scan")]
 #[derive(Debug, Options)]
 struct AdjustPerspectiveOptions {
     #[options(help = "path to position file", required)]
@@ -270,7 +275,10 @@ fn main() {
             error!("{} not found", path.display());
         }
         return;
-    } else if let Some(Command::ListCams(ref list_cams_options)) = opts.command {
+    }
+
+    #[cfg(feature = "scan")]
+    if let Some(Command::ListCams(ref list_cams_options)) = opts.command {
         let lower_index = list_cams_options.lower_index.unwrap_or(0);
         let upper_index = list_cams_options.upper_index.unwrap_or(10);
 
@@ -305,7 +313,10 @@ fn main() {
         info!("\nWorking cameras: {working_cameras:?}");
 
         return;
-    } else if let Some(Command::AdjustPerspective(ref perspective_adjust_options)) = opts.command {
+    }
+
+    #[cfg(feature = "scan")]
+    if let Some(Command::AdjustPerspective(ref perspective_adjust_options)) = opts.command {
         let config_holder = utils::load_validate_conf(config_path).2;
 
         let mut pos_file = match File::open(perspective_adjust_options.position_file.clone()) {

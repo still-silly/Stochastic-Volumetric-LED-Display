@@ -16,6 +16,7 @@ use std::{
 
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use log::{debug, error, info, warn};
+#[cfg(feature = "scan")]
 use opencv::{
     core::{Mat, Point, Scalar},
     imgproc::{self, LINE_8},
@@ -25,9 +26,11 @@ use opencv::{
     },
 };
 
+#[cfg(feature = "scan")]
+use crate::{Config, GetEventsFrameBuffer, VisionData, scan::get_cam};
 use crate::{
-    Config, GetEventsFrameBuffer, IOHandles, LedState, ManagerData, ManagerState, PosEntry,
-    RuntimeConfig, UnityOptions, VisionData, led_manager, scan::get_cam,
+    IOHandles, LedState, ManagerData, ManagerState, PosEntry, RuntimeConfig, UnityOptions,
+    led_manager,
 };
 
 pub fn signal_restart(unity_ip: Ipv4Addr, unity_port: u32) {
@@ -138,6 +141,7 @@ pub fn send_pos(unity: UnityOptions) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "scan")]
 pub fn get_events(
     manager: Arc<Mutex<ManagerData>>,
     unity: &UnityOptions,
@@ -497,6 +501,7 @@ pub fn get_events(
     Ok(())
 }
 
+#[cfg(feature = "scan")]
 pub fn start_listeners(
     config_holder: &Config,
     manager: &Arc<Mutex<ManagerData>>,
@@ -580,10 +585,7 @@ pub fn start_listeners(
                     udp_socket: None,
                     serial_port: Vec::new(),
                 },
-                vision: VisionData {
-                    frame_cam_1: Default::default(),
-                    frame_cam_2: Default::default(),
-                },
+                vision: VisionData::default(),
             }));
         }
 
@@ -617,4 +619,13 @@ pub fn start_listeners(
         )
     }
     children
+}
+
+#[cfg(not(feature = "scan"))]
+pub fn start_listeners(
+    _config_holder: &crate::Config,
+    _manager: &std::sync::Arc<std::sync::Mutex<ManagerData>>,
+) -> Vec<JoinHandle<()>> {
+    warn!("Unity listeners require the `scan` feature and are disabled in this build");
+    Vec::new()
 }

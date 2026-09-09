@@ -17,5 +17,7 @@ pub use read_vled::read_vled;
 #[cfg(feature = "scan")]
 pub use scan::scan;
 pub use speedtest::speedtest;
-pub use unity::{get_events, send_pos, signal_restart};
+#[cfg(feature = "scan")]
+pub use unity::get_events;
+pub use unity::{send_pos, signal_restart};
 pub use utils::*;

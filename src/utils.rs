@@ -11,6 +11,7 @@ use std::{
 
 use crossbeam_channel::Sender;
 use log::{debug, error, info, warn}; // TODO: Depreceate unity export byte data
+#[cfg(feature = "scan")]
 use opencv::prelude::*;
 use serde::Deserialize;
 use serialport::SerialPort;
@@ -224,17 +225,27 @@ pub struct IOHandles {
     pub esp_data_file_buf: Option<BufWriter<File>>,
 }
 
-#[derive(Debug)]
+#[cfg(feature = "scan")]
+#[derive(Debug, Default)]
 pub struct VisionData {
     pub frame_cam_1: Mat,
     pub frame_cam_2: Mat,
 }
 
+#[cfg(not(feature = "scan"))]
+#[derive(Debug, Default)]
+pub struct VisionData;
+
+#[cfg(feature = "scan")]
 #[derive(Clone)]
 pub struct GetEventsFrameBuffer {
     pub shared_frame_1: Mat,
     pub shared_frame_2: Mat,
 }
+
+#[cfg(not(feature = "scan"))]
+#[derive(Clone, Default)]
+pub struct GetEventsFrameBuffer;
 
 #[derive(Clone, Debug)]
 pub struct ScanData {
@@ -510,10 +521,7 @@ pub fn load_validate_conf(config_path: &Path) -> (ManagerData, UnityOptions, Con
                 udp_socket: None,
                 serial_port: Vec::new(),
             },
-            vision: VisionData {
-                frame_cam_1: Default::default(),
-                frame_cam_2: Default::default(),
-            },
+            vision: VisionData::default(),
         },
         config_holder.unity_options.clone(),
         config_holder,
