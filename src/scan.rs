@@ -14,13 +14,63 @@ use anyhow::{Result, anyhow};
 use chrono::Local; // TODO: Play with different camera backends
 use inquire;
 use log::{debug, error, info, warn}; // TODO: Properly get HSV for each camera
+#[cfg(svled_opencv5)]
+use opencv::core::get_default_algorithm_hint;
 use opencv::{
-    core::{self, Point, Scalar, flip, get_default_algorithm_hint, min_max_loc, no_array},
+    core::{self, Point, Scalar, ToInputArray, ToOutputArray, flip, min_max_loc, no_array},
     highgui::{self, EVENT_LBUTTONDOWN, EVENT_LBUTTONUP, EVENT_MOUSEMOVE},
     imgproc::{self, COLOR_BGR2GRAY, COLOR_BGR2HSV, LINE_8},
     prelude::*,
     videoio::{self, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FRAME_WIDTH, VideoCapture},
 };
+
+fn cvt_color_compat(
+    src: &impl ToInputArray,
+    dst: &mut impl ToOutputArray,
+    code: i32,
+    dst_cn: i32,
+) -> opencv::Result<()> {
+    #[cfg(svled_opencv5)]
+    {
+        imgproc::cvt_color(
+            src,
+            dst,
+            code,
+            dst_cn,
+            get_default_algorithm_hint().unwrap(),
+        )
+    }
+    #[cfg(not(svled_opencv5))]
+    {
+        imgproc::cvt_color(src, dst, code, dst_cn)
+    }
+}
+
+fn gaussian_blur_compat(
+    src: &impl ToInputArray,
+    dst: &mut impl ToOutputArray,
+    ksize: core::Size,
+    sigma_x: f64,
+    sigma_y: f64,
+    border_type: i32,
+) -> opencv::Result<()> {
+    #[cfg(svled_opencv5)]
+    {
+        imgproc::gaussian_blur(
+            src,
+            dst,
+            ksize,
+            sigma_x,
+            sigma_y,
+            border_type,
+            get_default_algorithm_hint().unwrap(),
+        )
+    }
+    #[cfg(not(svled_opencv5))]
+    {
+        imgproc::gaussian_blur(src, dst, ksize, sigma_x, sigma_y, border_type)
+    }
+}
 
 use crate::{Config, CropPos, ManagerData, PosEntry, ScanData, led_manager};
 
@@ -752,14 +802,7 @@ fn brightest_darkest(
     if !prompt {
         let brightest_pos;
 
-        imgproc::cvt_color(
-            &frame,
-            &mut image_hsv,
-            COLOR_BGR2HSV,
-            0,
-            get_default_algorithm_hint().unwrap(),
-        )
-        .unwrap();
+        cvt_color_compat(&frame, &mut image_hsv, COLOR_BGR2HSV, 0).unwrap();
 
         let frame = Mat::roi(
             &frame,
@@ -785,23 +828,9 @@ fn brightest_darkest(
         let select_brightest_result = select_brightest(cam, manager, config).unwrap();
         let brightest_pos = Point::new(select_brightest_result.0, select_brightest_result.1);
 
-        imgproc::cvt_color(
-            &frame,
-            &mut image_hsv,
-            COLOR_BGR2HSV,
-            0,
-            get_default_algorithm_hint().unwrap(),
-        )
-        .unwrap(); // Used to get our HSV
+        cvt_color_compat(&frame, &mut image_hsv, COLOR_BGR2HSV, 0).unwrap(); // Used to get our HSV
 
-        imgproc::cvt_color(
-            &frame.clone(),
-            &mut frame,
-            COLOR_BGR2GRAY,
-            0,
-            get_default_algorithm_hint().unwrap(),
-        )
-        .unwrap();
+        cvt_color_compat(&frame.clone(), &mut frame, COLOR_BGR2GRAY, 0).unwrap();
 
         brightest = *frame.at_2d::<u8>(brightest_pos.y, brightest_pos.x).unwrap();
         hsv = image_hsv
@@ -991,14 +1020,7 @@ pub fn select_brightest(
         let mut image_hsv: Mat = Default::default();
         let brightest_pos = Point::new(x_guard, y_guard);
 
-        imgproc::cvt_color(
-            frame,
-            &mut image_hsv,
-            COLOR_BGR2HSV,
-            0,
-            get_default_algorithm_hint().unwrap(),
-        )
-        .unwrap(); // Used to get our HSV
+        cvt_color_compat(frame, &mut image_hsv, COLOR_BGR2HSV, 0).unwrap(); // Used to get our HSV
 
         let hsv = image_hsv
             .at_2d::<opencv::core::Vec3b>(brightest_pos.y, brightest_pos.x)
@@ -1085,27 +1107,13 @@ pub fn select_brightest(
 
         debug!("applying upper and lower vals in select_brightest: {upper_vals:?} {lower_vals:?}");
         let mut hsv_frame = Mat::default();
-        imgproc::cvt_color(
-            frame,
-            &mut hsv_frame,
-            imgproc::COLOR_BGR2HSV,
-            0,
-            get_default_algorithm_hint().unwrap(),
-        )
-        .unwrap();
+        cvt_color_compat(frame, &mut hsv_frame, imgproc::COLOR_BGR2HSV, 0).unwrap();
 
         let mut mask = Mat::default();
         core::in_range(&hsv_frame, &lowerb, &upperb, &mut mask).unwrap();
 
         let mut mask_color = Mat::default();
-        imgproc::cvt_color(
-            &mask,
-            &mut mask_color,
-            imgproc::COLOR_GRAY2BGR,
-            0,
-            get_default_algorithm_hint().unwrap(),
-        )
-        .unwrap();
+        cvt_color_compat(&mask, &mut mask_color, imgproc::COLOR_GRAY2BGR, 0).unwrap();
 
         core::add_weighted(&frame.clone(), 0.5, &mask_color, 0.7, 0.0, frame, -1).unwrap();
 
@@ -1555,14 +1563,7 @@ fn callback_loop(
             let mut image_hsv: Mat = Default::default();
             let brightest_pos = Point::new(x_guard, y_guard);
 
-            imgproc::cvt_color(
-                frame,
-                &mut image_hsv,
-                COLOR_BGR2HSV,
-                0,
-                get_default_algorithm_hint().unwrap(),
-            )
-            .unwrap(); // Used to get our HSV
+            cvt_color_compat(frame, &mut image_hsv, COLOR_BGR2HSV, 0).unwrap(); // Used to get our HSV
 
             let hsv = image_hsv
                 .at_2d::<opencv::core::Vec3b>(brightest_pos.y, brightest_pos.x)
@@ -1595,7 +1596,7 @@ fn callback_loop(
 pub fn get_brightest_cam_1_pos(mut frame: Mat) -> (f64, f64, Point) {
     debug!("Frame channels: {}", frame.channels());
 
-    imgproc::gaussian_blur(
+    gaussian_blur_compat(
         // Blur frame to increase accuracy of min_max_loc
         &frame.clone(),
         &mut frame,
@@ -1603,18 +1604,10 @@ pub fn get_brightest_cam_1_pos(mut frame: Mat) -> (f64, f64, Point) {
         0.0,
         0.0,
         0,
-        get_default_algorithm_hint().unwrap(),
     )
     .unwrap();
 
-    imgproc::cvt_color(
-        &frame.clone(),
-        &mut frame,
-        COLOR_BGR2GRAY,
-        0,
-        get_default_algorithm_hint().unwrap(),
-    )
-    .unwrap(); // Greyscales frame
+    cvt_color_compat(&frame.clone(), &mut frame, COLOR_BGR2GRAY, 0).unwrap(); // Greyscales frame
 
     let mut min_val = 0.0;
     let mut max_val = 0.0;
@@ -1790,27 +1783,13 @@ pub fn filter(mut frame: &mut Mat, filter_color: &u32, manager: &Arc<Mutex<Manag
     debug!("applying upper and lower vals in filter function: {upperb:?} {lowerb:?}");
 
     let mut hsv_frame = Mat::default();
-    imgproc::cvt_color(
-        frame,
-        &mut hsv_frame,
-        imgproc::COLOR_BGR2HSV,
-        0,
-        get_default_algorithm_hint().unwrap(),
-    )
-    .unwrap();
+    cvt_color_compat(frame, &mut hsv_frame, imgproc::COLOR_BGR2HSV, 0).unwrap();
 
     let mut mask = Mat::default();
     core::in_range(&hsv_frame, &lowerb.unwrap(), &upperb.unwrap(), &mut mask).unwrap();
 
     let mut mask_color = Mat::default();
-    imgproc::cvt_color(
-        &mask,
-        &mut mask_color,
-        imgproc::COLOR_GRAY2BGR,
-        0,
-        get_default_algorithm_hint().unwrap(),
-    )
-    .unwrap();
+    cvt_color_compat(&mask, &mut mask_color, imgproc::COLOR_GRAY2BGR, 0).unwrap();
 
     core::add_weighted(&frame.clone(), 0.1, &mask_color, 0.9, 0.0, &mut frame, -1).unwrap();
 }
