@@ -1806,22 +1806,21 @@ fn scan_area_cycle(
     let mut success = 0;
     let mut failures = 0;
 
-    let x_start;
-    let x_end;
-    let y_start;
-    let y_end;
-
-    if !second_cam {
-        x_start = scan_data.pos.x1_start;
-        x_end = scan_data.pos.x1_end;
-        y_start = scan_data.pos.y1_start;
-        y_end = scan_data.pos.y1_end;
+    let (x_start, x_end, y_start, y_end) = if !second_cam {
+        (
+            scan_data.pos.x1_start,
+            scan_data.pos.x1_end,
+            scan_data.pos.y1_start,
+            scan_data.pos.y1_end,
+        )
     } else {
-        x_start = scan_data.pos.x2_start.unwrap();
-        x_end = scan_data.pos.x2_end.unwrap();
-        y_start = scan_data.pos.y2_start.unwrap();
-        y_end = scan_data.pos.y2_end.unwrap();
-    }
+        (
+            scan_data.pos.x2_start.unwrap(),
+            scan_data.pos.x2_end.unwrap(),
+            scan_data.pos.y2_start.unwrap(),
+            scan_data.pos.y2_end.unwrap(),
+        )
+    };
 
     let filter_color = manager.lock().unwrap().config.filter_color.unwrap();
     let scan_mode = manager.lock().unwrap().config.scan_mode;
