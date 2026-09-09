@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, wled-support]
+    branches: [main, wled-support, 'codex/**']
   pull_request:
     branches: [main, wled-support]
   workflow_dispatch:
