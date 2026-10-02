@@ -25,6 +25,28 @@ enum SendCommandArgs<'a> {
     ChannelConfigState(ConnectionType<'a>, &'a LedConfig, &'a mut LedState),
 }
 
+/// Maps a global LED index to its strip and its index within that strip.
+///
+/// LEDs are divided into equal-sized strips. If `num_led` is not evenly
+/// divisible by `num_strips`, the remainder is intentionally ignored to
+/// preserve the behavior of the previous strip scan.
+fn strip_and_local_index(n: u16, num_led: u32, num_strips: u32) -> Option<(usize, u16)> {
+    let leds_per_strip = num_led / num_strips;
+
+    if leds_per_strip == 0 {
+        return None;
+    }
+
+    let n = n as u32;
+    let strip_index = n / leds_per_strip;
+
+    if strip_index >= num_strips {
+        return None;
+    }
+
+    Some((strip_index as usize, (n % leds_per_strip) as u16))
+}
+
 fn dispatch_threads(manager: &mut ManagerData) -> Vec<Sender<Task>> {
     let config = manager.config.clone();
     let mut channels = Vec::new();
@@ -259,28 +281,15 @@ pub fn set_color(manager_guard: &Arc<Mutex<ManagerData>>, n: u16, r: u8, g: u8, 
         } else if manager.state.led_thread_channels.is_empty() {
             manager.state.led_thread_channels = dispatch_threads(&mut manager);
         } else {
-            let mut n = n;
-
-            let leds_per_strip = manager.config.num_led / manager.config.num_strips;
-
-            for index in 1..manager.config.num_strips + 1 {
-                if (n as u32) < index * leds_per_strip && n as u32 >= (index - 1) * leds_per_strip {
-                    // Determines which strip to send the index instruction to.
-                    n = if index > 1 {
-                        n - (leds_per_strip * (index - 1)) as u16
-                    } else {
-                        n
-                    };
-
-                    manager.state.led_thread_channels[(index - 1) as usize]
-                        .send(Task {
-                            command: (n, r, g, b),
-                            controller_queue_length: None,
-                        })
-                        .expect("Could not dispatch task to a worker thread!");
-
-                    break;
-                }
+            if let Some((strip_index, local_index)) =
+                strip_and_local_index(n, manager.config.num_led, manager.config.num_strips)
+            {
+                manager.state.led_thread_channels[strip_index]
+                    .send(Task {
+                        command: (local_index, r, g, b),
+                        controller_queue_length: None,
+                    })
+                    .expect("Could not dispatch task to a worker thread!");
             }
         }
     }
@@ -319,28 +328,16 @@ fn send_color_command(manager_or_config: SendCommandArgs, n: u16, r: u8, g: u8, 
                             }
                         }
 
-                        // Determine the correct index and serial port
-                        let leds_per_strip = manager.config.num_led / manager.config.num_strips;
-                        let mut serial_port = None;
+                        // Determine the correct index and serial port.
+                        let (strip_index, local_index) = strip_and_local_index(
+                            n,
+                            manager.config.num_led,
+                            manager.config.num_strips,
+                        )
+                        .expect("Could not determine the correct index and serial port to send LED command on!");
+                        n = local_index;
 
-                        for index in 1..manager.config.num_strips + 1 {
-                            if (n as u32) < index * leds_per_strip
-                                && n as u32 >= (index - 1) * leds_per_strip
-                            {
-                                // Determines which strip to send the index instruction to.
-                                n = if index > 1 {
-                                    n - (leds_per_strip * (index - 1)) as u16
-                                } else {
-                                    n
-                                };
-                                serial_port =
-                                    Some(manager.io.serial_port[(index - 1) as usize].as_mut());
-
-                                break;
-                            }
-                        }
-
-                        ConnectionType::Serial(serial_port.expect("Could not determine the correct index and serial port to send LED command on!"))
+                        ConnectionType::Serial(manager.io.serial_port[strip_index].as_mut())
                     }
                 };
 
